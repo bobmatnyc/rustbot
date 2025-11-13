@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Rustbot Agent Configuration",
+  "type": "object",
+  "required": ["name", "provider", "model", "instruction"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "default": "1.0",
+      "description": "Schema version"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique agent identifier"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable agent purpose"
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["openrouter", "openai", "anthropic", "ollama"],
+      "description": "LLM provider"
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Model identifier (e.g., 'anthropic/claude-3.5-sonnet')"
+    },
+    "apiKey": {
+      "type": "string",
+      "description": "API key (use ${ENV_VAR} for environment variables)"
+    },
+    "apiBase": {
+      "type": "string",
+      "format": "uri",
+      "description": "Custom API endpoint URL"
+    },
+    "instruction": {
+      "type": "string",
+      "description": "System prompt defining agent behavior"
+    },
+    "personality": {
+      "type": "string",
+      "description": "Optional personality/tone (for conversational agents)"
+    },
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "default": 0.7
+        },
+        "maxTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 4096
+        },
+        "topP": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "webSearch": {
+          "type": "boolean",
+          "default": false
+        },
+        "imageInput": {
+          "type": "boolean",
+          "default": false
+        },
+        "streaming": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "author": {"type": "string"},
+        "created": {"type": "string"},
+        "version": {"type": "string"},
+        "tags": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  }
+}

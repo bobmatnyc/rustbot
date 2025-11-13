@@ -42,12 +42,28 @@ impl LlmAdapter for OpenRouterAdapter {
         request: LlmRequest,
         tx: mpsc::UnboundedSender<String>,
     ) -> Result<()> {
+        // Prepare web search tools if enabled
+        let (tools, provider) = if request.web_search == Some(true) {
+            (
+                Some(vec![WebSearchTool {
+                    tool_type: "web_search".to_string(),
+                }]),
+                Some(ProviderConfig {
+                    allow_fallbacks: Some(false),
+                }),
+            )
+        } else {
+            (None, None)
+        };
+
         let api_request = ApiRequest {
             model: request.model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
             messages: request.messages,
             stream: true,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
+            tools,
+            provider,
         };
 
         let response = self.send_request(&api_request).await?;
@@ -109,12 +125,28 @@ impl LlmAdapter for OpenRouterAdapter {
     }
 
     async fn complete_chat(&self, request: LlmRequest) -> Result<LlmResponse> {
+        // Prepare web search tools if enabled
+        let (tools, provider) = if request.web_search == Some(true) {
+            (
+                Some(vec![WebSearchTool {
+                    tool_type: "web_search".to_string(),
+                }]),
+                Some(ProviderConfig {
+                    allow_fallbacks: Some(false),
+                }),
+            )
+        } else {
+            (None, None)
+        };
+
         let api_request = ApiRequest {
             model: request.model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
             messages: request.messages,
             stream: false,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
+            tools,
+            provider,
         };
 
         let response = self.send_request(&api_request).await?;
@@ -154,6 +186,22 @@ struct ApiRequest {
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<WebSearchTool>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<ProviderConfig>,
+}
+
+#[derive(Debug, Serialize)]
+struct WebSearchTool {
+    #[serde(rename = "type")]
+    tool_type: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ProviderConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    allow_fallbacks: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

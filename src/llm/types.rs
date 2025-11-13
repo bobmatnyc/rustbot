@@ -9,6 +9,43 @@ pub enum AdapterType {
     // OpenAI,
 }
 
+/// LLM provider enumeration for JSON configuration
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LlmProvider {
+    OpenRouter,
+    OpenAI,
+    Anthropic,
+    Ollama,
+}
+
+impl LlmProvider {
+    /// Get the default API base URL for this provider
+    pub fn default_api_base(&self) -> &str {
+        match self {
+            LlmProvider::OpenRouter => "https://openrouter.ai/api/v1",
+            LlmProvider::OpenAI => "https://api.openai.com/v1",
+            LlmProvider::Anthropic => "https://api.anthropic.com/v1",
+            LlmProvider::Ollama => "http://localhost:11434",
+        }
+    }
+
+    /// Get the default environment variable name for this provider's API key
+    pub fn default_env_var(&self) -> &str {
+        match self {
+            LlmProvider::OpenRouter => "OPENROUTER_API_KEY",
+            LlmProvider::OpenAI => "OPENAI_API_KEY",
+            LlmProvider::Anthropic => "ANTHROPIC_API_KEY",
+            LlmProvider::Ollama => "", // No API key needed for local Ollama
+        }
+    }
+
+    /// Check if this provider requires an API key
+    pub fn requires_api_key(&self) -> bool {
+        !matches!(self, LlmProvider::Ollama)
+    }
+}
+
 /// Unified request format for all LLM adapters
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmRequest {
@@ -17,6 +54,7 @@ pub struct LlmRequest {
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
     pub tools: Option<Vec<Tool>>, // For function calling
+    pub web_search: Option<bool>, // Enable web search capabilities
 }
 
 impl LlmRequest {
@@ -27,6 +65,7 @@ impl LlmRequest {
             temperature: None,
             max_tokens: None,
             tools: None,
+            web_search: None,
         }
     }
 
@@ -37,6 +76,11 @@ impl LlmRequest {
 
     pub fn with_tools(mut self, tools: Vec<Tool>) -> Self {
         self.tools = Some(tools);
+        self
+    }
+
+    pub fn with_web_search(mut self, enabled: bool) -> Self {
+        self.web_search = Some(enabled);
         self
     }
 }
