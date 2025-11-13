@@ -175,10 +175,7 @@ impl RustbotApi {
 
         // Add user message to history AFTER sending to agent
         // This ensures the next message will have this one as context
-        self.message_history.push_back(LlmMessage {
-            role: "user".to_string(),
-            content: message.to_string(),
-        });
+        self.message_history.push_back(LlmMessage::new("user", message));
 
         // Trim history if needed
         while self.message_history.len() > self.max_history_size {
@@ -212,10 +209,7 @@ impl RustbotApi {
         });
 
         // Add assistant response to history
-        self.message_history.push_back(LlmMessage {
-            role: "assistant".to_string(),
-            content: full_response.clone(),
-        });
+        self.message_history.push_back(LlmMessage::new("assistant", full_response.clone()));
 
         Ok(full_response)
     }
@@ -264,10 +258,7 @@ impl RustbotApi {
     /// Add an assistant response to the message history
     /// This should be called after receiving the complete response from streaming
     pub fn add_assistant_response(&mut self, response: String) {
-        self.message_history.push_back(LlmMessage {
-            role: "assistant".to_string(),
-            content: response,
-        });
+        self.message_history.push_back(LlmMessage::new("assistant", response));
 
         // Trim history if needed
         while self.message_history.len() > self.max_history_size {

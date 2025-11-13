@@ -267,20 +267,14 @@ impl Agent {
         // Add system message
         let system_content = self.build_system_message();
         if !system_content.is_empty() {
-            api_messages.push(LlmMessage {
-                role: "system".to_string(),
-                content: system_content,
-            });
+            api_messages.push(LlmMessage::new("system", system_content));
         }
 
         // Add conversation context
         api_messages.extend(context_messages);
 
         // Add current user message
-        api_messages.push(LlmMessage {
-            role: "user".to_string(),
-            content: user_message,
-        });
+        api_messages.push(LlmMessage::new("user", user_message));
 
         // Create request with web search if enabled for this agent
         let mut request = LlmRequest::new(api_messages);
@@ -387,16 +381,10 @@ impl Agent {
             // Build complete message history
             let mut api_messages = Vec::new();
             if !system_content.is_empty() {
-                api_messages.push(LlmMessage {
-                    role: "system".to_string(),
-                    content: system_content,
-                });
+                api_messages.push(LlmMessage::new("system", system_content));
             }
             api_messages.extend(context_messages);
-            api_messages.push(LlmMessage {
-                role: "user".to_string(),
-                content: user_message,
-            });
+            api_messages.push(LlmMessage::new("user", user_message));
 
             // Create request with web search if enabled
             let mut request = LlmRequest::new(api_messages);

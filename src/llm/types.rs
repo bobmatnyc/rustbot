@@ -113,8 +113,48 @@ pub struct LlmResponse {
 /// A single message in the conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
-    pub role: String, // "user", "assistant", "system"
+    pub role: String, // "user", "assistant", "system", "tool"
     pub content: String,
+
+    /// For tool messages: the ID of the tool call this is responding to
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub tool_call_id: Option<String>,
+
+    /// For assistant messages: tool calls requested by the assistant
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub tool_calls: Option<Vec<ToolCall>>,
+}
+
+impl Message {
+    /// Create a simple user/assistant/system message
+    pub fn new(role: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            role: role.into(),
+            content: content.into(),
+            tool_call_id: None,
+            tool_calls: None,
+        }
+    }
+
+    /// Create a tool result message
+    pub fn tool_result(tool_call_id: String, content: String) -> Self {
+        Self {
+            role: "tool".to_string(),
+            content,
+            tool_call_id: Some(tool_call_id),
+            tool_calls: None,
+        }
+    }
+
+    /// Create an assistant message with tool calls
+    pub fn with_tool_calls(content: String, tool_calls: Vec<ToolCall>) -> Self {
+        Self {
+            role: "assistant".to_string(),
+            content,
+            tool_call_id: None,
+            tool_calls: Some(tool_calls),
+        }
+    }
 }
 
 /// A tool call requested by the LLM
