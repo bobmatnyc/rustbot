@@ -3,6 +3,14 @@ name = "rustbot"
 version = "0.0.2"
 edition = "2021"
 
+[package.metadata.bundle]
+name = "Rustbot"
+identifier = "com.rustbot.app"
+icon = ["assets/rustbot.icns"]
+category = "DeveloperTool"
+short_description = "AI Assistant powered by Claude"
+long_description = "Rustbot is an AI assistant application built with Rust and egui, featuring multi-agent architecture and real-time streaming responses."
+
 [dependencies]
 tokio = { version = "1.40", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
