@@ -104,10 +104,18 @@ impl LlmAdapter for OpenRouterAdapter {
                             Ok(response) => {
                                 if let Some(choice) = response.choices.first() {
                                     if let Some(delta) = &choice.delta {
+                                        // Handle content streaming
                                         if let Some(content) = &delta.content {
                                             if tx.send(content.clone()).is_err() {
                                                 return Ok(()); // Receiver dropped
                                             }
+                                        }
+
+                                        // Detect tool calls
+                                        if let Some(tool_calls) = &delta.tool_calls {
+                                            tracing::info!("Tool call detected: {:?}", tool_calls);
+                                            // TODO: Handle tool call routing to specialist agents
+                                            // For now, just log it
                                         }
                                     }
                                 }
@@ -217,6 +225,21 @@ struct StreamChoice {
 #[derive(Debug, Deserialize)]
 struct Delta {
     content: Option<String>,
+    tool_calls: Option<Vec<ToolCallDelta>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ToolCallDelta {
+    id: Option<String>,
+    #[serde(rename = "type")]
+    call_type: Option<String>,
+    function: Option<FunctionCall>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FunctionCall {
+    name: Option<String>,
+    arguments: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
