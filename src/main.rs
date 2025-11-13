@@ -96,7 +96,43 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "rustbot",
         options,
-        Box::new(|_cc| {
+        Box::new(|cc| {
+            // Setup custom fonts
+            let mut fonts = egui::FontDefinitions::default();
+
+            // Load Roboto Regular
+            fonts.font_data.insert(
+                "Roboto-Regular".to_owned(),
+                egui::FontData::from_static(include_bytes!(
+                    "../assets/fonts/Roboto-Regular.ttf"
+                )),
+            );
+
+            // Load Roboto Bold
+            fonts.font_data.insert(
+                "Roboto-Bold".to_owned(),
+                egui::FontData::from_static(include_bytes!(
+                    "../assets/fonts/Roboto-Bold.ttf"
+                )),
+            );
+
+            // Set Roboto as the default proportional font (first = highest priority)
+            fonts
+                .families
+                .entry(egui::FontFamily::Proportional)
+                .or_default()
+                .insert(0, "Roboto-Regular".to_owned());
+
+            // Also use Roboto for monospace where appropriate
+            fonts
+                .families
+                .entry(egui::FontFamily::Monospace)
+                .or_default()
+                .push("Roboto-Regular".to_owned());
+
+            // Apply fonts
+            cc.egui_ctx.set_fonts(fonts);
+
             let api_key = std::env::var("OPENROUTER_API_KEY")
                 .expect("OPENROUTER_API_KEY not found in .env.local");
             Ok(Box::new(RustbotApp::new(api_key)))
@@ -698,49 +734,56 @@ This information is provided automatically to give you context about the current
     }
 
     fn render_system_prompts(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(20.0);
-        ui.heading("System Prompts");
-        ui.add_space(10.0);
+        // Use scroll area for system prompts
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.add_space(20.0);
+                ui.heading("System Prompts");
+                ui.add_space(10.0);
 
-        ui.label("These instructions are sent with every chat session:");
-        ui.add_space(10.0);
+                ui.label("These instructions are sent with every chat session:");
+                ui.add_space(10.0);
 
-        // System Instructions
-        ui.label(egui::RichText::new("System Instructions:").strong());
-        ui.add_space(5.0);
-        let system_instructions_response = ui.add_sized(
-            [ui.available_width(), 150.0],
-            egui::TextEdit::multiline(&mut self.system_prompts.system_instructions)
-                .hint_text("Enter system instructions for the AI...")
-        );
+                // System Instructions
+                ui.label(egui::RichText::new("System Instructions:").strong());
+                ui.add_space(5.0);
+                let system_instructions_response = ui.add_sized(
+                    [ui.available_width(), 200.0],
+                    egui::TextEdit::multiline(&mut self.system_prompts.system_instructions)
+                        .hint_text("Enter system instructions for the AI...")
+                );
 
-        ui.add_space(15.0);
+                ui.add_space(15.0);
 
-        // Personality Instructions
-        ui.label(egui::RichText::new("Personality Instructions:").strong());
-        ui.add_space(5.0);
-        let personality_response = ui.add_sized(
-            [ui.available_width(), 150.0],
-            egui::TextEdit::multiline(&mut self.system_prompts.personality_instructions)
-                .hint_text("Enter personality instructions for the AI...")
-        );
+                // Personality Instructions
+                ui.label(egui::RichText::new("Personality Instructions:").strong());
+                ui.add_space(5.0);
+                let personality_response = ui.add_sized(
+                    [ui.available_width(), 200.0],
+                    egui::TextEdit::multiline(&mut self.system_prompts.personality_instructions)
+                        .hint_text("Enter personality instructions for the AI...")
+                );
 
-        ui.add_space(15.0);
+                ui.add_space(15.0);
 
-        // Save button
-        if ui.button("Save Prompts").clicked() {
-            if let Err(e) = self.save_system_prompts() {
-                tracing::error!("Failed to save system prompts: {}", e);
-            }
-        }
+                // Save button
+                if ui.button("Save Prompts").clicked() {
+                    if let Err(e) = self.save_system_prompts() {
+                        tracing::error!("Failed to save system prompts: {}", e);
+                    }
+                }
 
-        // Show if any changes were detected
-        if system_instructions_response.changed() || personality_response.changed() {
-            ui.add_space(5.0);
-            ui.label(egui::RichText::new("* Unsaved changes")
-                .size(12.0)
-                .color(egui::Color32::from_rgb(220, 100, 60)));
-        }
+                // Show if any changes were detected
+                if system_instructions_response.changed() || personality_response.changed() {
+                    ui.add_space(5.0);
+                    ui.label(egui::RichText::new("* Unsaved changes")
+                        .size(12.0)
+                        .color(egui::Color32::from_rgb(220, 100, 60)));
+                }
+
+                ui.add_space(20.0); // Bottom padding
+            });
     }
 }
 
