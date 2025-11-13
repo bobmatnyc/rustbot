@@ -9,6 +9,7 @@ pub mod api;
 pub mod error;
 pub mod events;
 pub mod llm;
+pub mod tool_executor;
 pub mod version;
 
 // Re-export commonly used types for convenience

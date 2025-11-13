@@ -5,7 +5,9 @@
 use crate::agent::{Agent, AgentConfig, ToolDefinition};
 use crate::events::{Event, EventBus, EventKind, AgentStatus};
 use crate::llm::{Message as LlmMessage, LlmAdapter};
+use crate::tool_executor::ToolExecutor;
 use anyhow::{Result, Context as AnyhowContext};
+use async_trait::async_trait;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -264,6 +266,54 @@ impl RustbotApi {
         while self.message_history.len() > self.max_history_size {
             self.message_history.pop_front();
         }
+    }
+}
+
+/// Implement ToolExecutor for RustbotApi
+/// This allows agents to execute tool calls by delegating to specialist agents
+#[async_trait]
+impl ToolExecutor for RustbotApi {
+    async fn execute_tool(&self, tool_name: &str, arguments: &str) -> Result<String> {
+        tracing::info!("Executing tool: {} with args: {}", tool_name, arguments);
+
+        // Find the specialist agent matching the tool name
+        let specialist_agent = self.agents
+            .iter()
+            .find(|a| a.id() == tool_name)
+            .context(format!("Specialist agent '{}' not found", tool_name))?;
+
+        // Parse arguments JSON (could be used to construct a more specific prompt)
+        // For now, we'll just pass the arguments as the user message
+        let prompt = format!("Execute with arguments: {}", arguments);
+
+        // Execute the specialist agent with no context and no tools
+        let result_rx = specialist_agent.process_message_nonblocking(
+            prompt,
+            vec![],  // No conversation context for tool execution
+            None,    // Specialist agents don't get tools
+        );
+
+        // Block and collect the result
+        let stream_rx = self.runtime.block_on(async {
+            let mut rx = result_rx;
+            match rx.recv().await {
+                Some(Ok(stream)) => Ok(stream),
+                Some(Err(e)) => Err(e),
+                None => anyhow::bail!("No response from specialist agent"),
+            }
+        })?;
+
+        // Collect all chunks into result
+        let mut result = String::new();
+        self.runtime.block_on(async {
+            let mut rx = stream_rx;
+            while let Some(chunk) = rx.recv().await {
+                result.push_str(&chunk);
+            }
+        });
+
+        tracing::info!("Tool execution result: {}", result);
+        Ok(result)
     }
 }
 

@@ -4,6 +4,7 @@ mod api;
 mod error;
 mod events;
 mod llm;
+mod tool_executor;
 mod ui;
 mod version;
 
