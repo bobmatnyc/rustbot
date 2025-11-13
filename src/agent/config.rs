@@ -437,6 +437,7 @@ mod tests {
             parameters: ModelParameters::default(),
             capabilities: AgentCapabilities::default(),
             enabled: true,
+            is_primary: false,
             metadata: None,
         };
 
@@ -466,6 +467,7 @@ mod tests {
             },
             capabilities: AgentCapabilities::default(),
             enabled: true,
+            is_primary: false,
             metadata: None,
         };
 
@@ -491,6 +493,7 @@ mod tests {
             parameters: ModelParameters::default(),
             capabilities: AgentCapabilities::default(),
             enabled: true,
+            is_primary: false,
             metadata: None,
         };
 

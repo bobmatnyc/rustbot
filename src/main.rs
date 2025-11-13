@@ -16,7 +16,7 @@ use events::{Event, EventBus, EventKind, SystemCommand};
 use llm::{create_adapter, AdapterType, LlmAdapter};
 use std::sync::Arc;
 use std::collections::VecDeque;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, Mutex};
 use std::path::PathBuf;
 use egui_phosphor::regular as icons;
 use ui::{AppView, ChatMessage, ContextTracker, MessageRole, SettingsView, SystemPrompts, TokenStats, VisualEvent};
@@ -85,8 +85,8 @@ fn main() -> std::result::Result<(), eframe::Error> {
 }
 
 struct RustbotApp {
-    // Core API for all functionality
-    api: RustbotApi,
+    // Core API for all functionality - wrapped in Arc<Mutex> for thread safety
+    api: Arc<Mutex<RustbotApi>>,
 
     // UI state
     message_input: String,
@@ -164,7 +164,7 @@ impl RustbotApp {
         let api = api_builder.build().expect("Failed to build RustbotApi");
 
         Self {
-            api,
+            api: Arc::new(Mutex::new(api)),
             message_input: String::new(),
             messages: Vec::new(),
             response_rx: None,
@@ -382,114 +382,102 @@ This information is provided automatically to give you context about the current
             return;
         }
 
-        // Use API to send message directly (bypassing event system for now)
-        // This is the proper API-first approach
-        match self.api.send_message(&self.message_input) {
-            Ok(result_rx) => {
-                // Store result receiver to poll in update loop
-                self.pending_agent_result = Some(result_rx);
+        // Calculate input tokens early
+        let input_tokens = self.estimate_tokens(&self.message_input);
+        self.token_stats.daily_input += input_tokens;
+        self.token_stats.total_input += input_tokens;
+        let _ = self.save_token_stats();
 
-                // Calculate input tokens
-                let input_tokens = self.estimate_tokens(&self.message_input);
-                self.token_stats.daily_input += input_tokens;
-                self.token_stats.total_input += input_tokens;
-                let _ = self.save_token_stats();
+        // Add user message to UI
+        self.messages.push(ChatMessage {
+            role: MessageRole::User,
+            content: self.message_input.clone(),
+            input_tokens: Some(input_tokens),
+            output_tokens: None,
+        });
 
-                // Add user message to UI
-                self.messages.push(ChatMessage {
-                    role: MessageRole::User,
-                    content: self.message_input.clone(),
-                    input_tokens: Some(input_tokens),
-                    output_tokens: None,
-                });
+        // Add placeholder for assistant response
+        self.messages.push(ChatMessage {
+            role: MessageRole::Assistant,
+            content: String::new(),
+            input_tokens: None,
+            output_tokens: None,
+        });
 
-                // Add placeholder for assistant response
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Assistant,
-                    content: String::new(),
-                    input_tokens: None,
-                    output_tokens: None,
-                });
+        self.is_waiting = true;
+        self.current_response.clear();
 
-                self.is_waiting = true;
-                self.current_response.clear();
+        // Update context tracker
+        let system_content_tokens = self.estimate_tokens(&self.generate_system_context());
+        let conversation_total_tokens: u32 = self.messages.iter()
+            .map(|msg| self.estimate_tokens(&msg.content))
+            .sum();
+        self.context_tracker.update_counts(system_content_tokens, conversation_total_tokens);
 
-                // Update context tracker
-                let system_content_tokens = self.estimate_tokens(&self.generate_system_context());
-                let conversation_total_tokens: u32 = self.messages.iter()
-                    .map(|msg| self.estimate_tokens(&msg.content))
-                    .sum();
-                self.context_tracker.update_counts(system_content_tokens, conversation_total_tokens);
-            }
-            Err(e) => {
-                tracing::error!("Failed to send message: {}", e);
-                // Show error to user
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Assistant,
-                    content: format!("⚠️ Error: {}\n\nPlease try again or check your connection.", e),
-                    input_tokens: None,
-                    output_tokens: None,
-                });
-            }
-        }
+        // Call send_message - we use a channel to communicate the result back
+        let message = self.message_input.clone();
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.pending_agent_result = Some(rx);
+
+        // Spawn async task using tokio runtime
+        // This is the proper way to call async code from sync UI thread
+        let api = Arc::clone(&self.api);
+        self.runtime.spawn(async move {
+            // Lock the API, call send_message, then release lock
+            let mut api_guard = api.lock().await;
+            let result = api_guard.send_message(&message).await;
+            let _ = tx.send(result);
+        });
 
         // Clear input after processing
         self.message_input.clear();
     }
 
     fn handle_user_message_event(&mut self, _ctx: &egui::Context, content: String) {
-        // Event-driven message handling now uses the API
-        // This provides the same functionality through the programmatic API
-        match self.api.send_message(&content) {
-            Ok(result_rx) => {
-                // Store result receiver to poll in update loop
-                self.pending_agent_result = Some(result_rx);
+        // Calculate input tokens
+        let input_tokens = self.estimate_tokens(&content);
+        self.token_stats.daily_input += input_tokens;
+        self.token_stats.total_input += input_tokens;
+        let _ = self.save_token_stats();
 
-                // Calculate input tokens
-                let input_tokens = self.estimate_tokens(&content);
-                self.token_stats.daily_input += input_tokens;
-                self.token_stats.total_input += input_tokens;
-                let _ = self.save_token_stats();
+        // Add user message to UI
+        self.messages.push(ChatMessage {
+            role: MessageRole::User,
+            content: content.clone(),
+            input_tokens: Some(input_tokens),
+            output_tokens: None,
+        });
 
-                // Add user message to UI
-                self.messages.push(ChatMessage {
-                    role: MessageRole::User,
-                    content: content.clone(),
-                    input_tokens: Some(input_tokens),
-                    output_tokens: None,
-                });
+        // Add placeholder for assistant response
+        self.messages.push(ChatMessage {
+            role: MessageRole::Assistant,
+            content: String::new(),
+            input_tokens: None,
+            output_tokens: None,
+        });
 
-                // Add placeholder for assistant response
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Assistant,
-                    content: String::new(),
-                    input_tokens: None,
-                    output_tokens: None,
-                });
+        self.is_waiting = true;
+        self.current_response.clear();
 
-                self.is_waiting = true;
-                self.current_response.clear();
+        // Update context tracker
+        let system_content_tokens = self.estimate_tokens(&self.generate_system_context());
+        let conversation_total_tokens: u32 = self.messages.iter()
+            .map(|msg| self.estimate_tokens(&msg.content))
+            .sum();
+        self.context_tracker.update_counts(system_content_tokens, conversation_total_tokens);
 
-                // Update context tracker
-                let system_content_tokens = self.estimate_tokens(&self.generate_system_context());
-                let conversation_total_tokens: u32 = self.messages.iter()
-                    .map(|msg| self.estimate_tokens(&msg.content))
-                    .sum();
-                self.context_tracker.update_counts(system_content_tokens, conversation_total_tokens);
-            }
-            Err(e) => {
-                tracing::error!("Failed to send message via API: {}", e);
-                self.is_waiting = false;
+        // Spawn async task to send message
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.pending_agent_result = Some(rx);
 
-                // Add error message visible to user
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Assistant,
-                    content: format!("⚠️ Error: {}\n\nPlease try again or check your connection.", e),
-                    input_tokens: None,
-                    output_tokens: None,
-                });
-            }
-        }
+        // Spawn async task using tokio runtime
+        let api = Arc::clone(&self.api);
+        self.runtime.spawn(async move {
+            // Lock the API, call send_message, then release lock
+            let mut api_guard = api.lock().await;
+            let result = api_guard.send_message(&content).await;
+            let _ = tx.send(result);
+        });
     }
 
 }
@@ -649,7 +637,12 @@ impl eframe::App for RustbotApp {
 
                 // Add assistant response to API's message history
                 // This ensures the next message will have this response as context
-                self.api.add_assistant_response(self.current_response.clone());
+                let api = Arc::clone(&self.api);
+                let response = self.current_response.clone();
+                self.runtime.spawn(async move {
+                    let mut api_guard = api.lock().await;
+                    api_guard.add_assistant_response(response);
+                });
 
                 self.response_rx = None;
                 self.current_response.clear();

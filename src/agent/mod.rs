@@ -386,6 +386,9 @@ impl Agent {
 
         // Spawn async task
         runtime.spawn(async move {
+            let agent_start = std::time::Instant::now();
+            tracing::debug!("⏱️  [AGENT] Processing started");
+
             // Build system message
             let mut parts = Vec::new();
             if !system_instructions.is_empty() {
@@ -401,6 +404,8 @@ impl Agent {
                 }
             }
             let system_content = parts.join("\n\n");
+
+            tracing::debug!("⏱️  [AGENT] System message built in {:?}", agent_start.elapsed());
 
             // Build complete message history
             let mut api_messages = Vec::new();
@@ -420,17 +425,27 @@ impl Agent {
                 request.tool_choice = Some("auto".to_string());
 
                 tracing::info!("Processing message with tools enabled");
+                tracing::debug!("⏱️  [AGENT] Starting complete_chat (non-streaming) at {:?}", agent_start.elapsed());
 
                 // Use complete_chat for tool detection
                 match llm_adapter.complete_chat(request).await {
                     Ok(response) => {
+                        tracing::debug!("⏱️  [AGENT] complete_chat finished at {:?}", agent_start.elapsed());
+
                         if let Some(tool_calls) = response.tool_calls {
                             // Tool calls detected - return for execution
                             tracing::info!("Tool calls detected: {} calls", tool_calls.len());
 
                             // Add assistant message with tool calls to history
+                            // Anthropic requires non-empty content, so use placeholder if needed
+                            let content = if response.content.is_empty() {
+                                "I'll use the available tools to help with that.".to_string()
+                            } else {
+                                response.content
+                            };
+
                             api_messages.push(LlmMessage::with_tool_calls(
-                                response.content,
+                                content,
                                 tool_calls.clone(),
                             ));
 
@@ -467,6 +482,7 @@ impl Agent {
             } else {
                 // No tools - use streaming as before
                 tracing::info!("Processing message without tools, using stream_chat");
+                tracing::debug!("⏱️  [AGENT] Starting stream_chat at {:?}", agent_start.elapsed());
 
                 let (tx, rx) = mpsc::unbounded_channel();
 

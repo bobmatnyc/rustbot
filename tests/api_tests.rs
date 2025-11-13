@@ -186,6 +186,7 @@ fn test_builder_pattern() {
         personality: Some("Professional".to_string()),
         model: "anthropic/claude-sonnet-4.5".to_string(),
         enabled: true,
+        is_primary: false,
         web_search_enabled: false,
     };
 

@@ -159,19 +159,9 @@ impl crate::RustbotApp {
 
                 ui.add_space(20.0);
 
-                // Get agent status using API
-                let status_text = if let Some(status) = self.api.current_agent_status() {
-                    match status {
-                        crate::events::AgentStatus::Thinking => "Assistant is thinking...",
-                        crate::events::AgentStatus::Responding => "Assistant is responding...",
-                        _ => "Processing your message...",
-                    }
-                } else {
-                    "Processing..."
-                };
-
+                // Simple status text (agent status requires async access, so just show generic message)
                 ui.label(
-                    egui::RichText::new(status_text)
+                    egui::RichText::new("Processing your message...")
                         .size(12.0)
                         .color(egui::Color32::from_rgb(100, 150, 255)),
                 );

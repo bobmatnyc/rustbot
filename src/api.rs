@@ -128,6 +128,9 @@ impl RustbotApi {
         &mut self,
         message: &str,
     ) -> Result<mpsc::UnboundedReceiver<String>> {
+        let start_time = std::time::Instant::now();
+        tracing::debug!("⏱️  [PERF] send_message started");
+
         // Get context messages (last N messages) - WITHOUT adding current message yet
         // The agent will receive the current message separately and add it to context
         let context_messages: Vec<LlmMessage> = self.message_history
@@ -135,6 +138,20 @@ impl RustbotApi {
             .take(self.max_history_size)
             .cloned()
             .collect();
+
+        tracing::debug!("⏱️  [PERF] Context prepared in {:?}", start_time.elapsed());
+
+        // OPTIMIZATION: Publish immediate "thinking" status for better perceived performance
+        // This provides instant feedback to the user before we wait for the LLM response
+        let _ = self.event_bus.publish(Event::new(
+            "system".to_string(),
+            "broadcast".to_string(),
+            EventKind::AgentStatusChange {
+                agent_id: self.active_agent_id.clone(),
+                status: AgentStatus::Thinking,
+            },
+        ));
+        tracing::debug!("⏱️  [PERF] Published thinking status at {:?}", start_time.elapsed());
 
         // Find active agent
         let agent = self.agents
@@ -169,6 +186,7 @@ impl RustbotApi {
         }
 
         // Process message through agent (non-blocking)
+        tracing::debug!("⏱️  [PERF] Starting agent processing at {:?}", start_time.elapsed());
         let mut result_rx = agent.process_message_nonblocking(
             message.to_string(),
             context_messages,
@@ -185,16 +203,32 @@ impl RustbotApi {
         }
 
         // Wait for the agent response and handle tool execution if needed
+        tracing::debug!("⏱️  [PERF] Waiting for agent response at {:?}", start_time.elapsed());
         let agent_response_result = result_rx.recv().await
             .context("No response from agent")?;
+
+        tracing::debug!("⏱️  [PERF] Agent response received at {:?}", start_time.elapsed());
 
         match agent_response_result {
             Ok(AgentResponse::StreamingResponse(stream)) => {
                 // No tools needed - return stream directly
+                tracing::debug!("⏱️  [PERF] Streaming response started at {:?}", start_time.elapsed());
+
+                // Publish responding status
+                let _ = self.event_bus.publish(Event::new(
+                    "system".to_string(),
+                    "broadcast".to_string(),
+                    EventKind::AgentStatusChange {
+                        agent_id: self.active_agent_id.clone(),
+                        status: AgentStatus::Responding,
+                    },
+                ));
+
                 Ok(stream)
             }
             Ok(AgentResponse::NeedsToolExecution { tool_calls, mut messages }) => {
                 tracing::info!("Tool execution required: {} tools to execute", tool_calls.len());
+                tracing::debug!("⏱️  [PERF] Tool execution phase started at {:?}", start_time.elapsed());
 
                 // CRITICAL FIX: Add the assistant message with tool calls to conversation history
                 // The messages array from the agent includes: [...context, user_msg, assistant_with_tool_calls]
@@ -206,33 +240,67 @@ impl RustbotApi {
                 }
 
                 // Execute each tool call sequentially
-                for tool_call in tool_calls {
-                    tracing::info!("Executing tool: {} (ID: {})", tool_call.name, tool_call.id);
+                for (idx, tool_call) in tool_calls.iter().enumerate() {
+                    tracing::info!("Executing tool {}/{}: {} (ID: {})",
+                        idx + 1, tool_calls.len(), tool_call.name, tool_call.id);
+
+                    let tool_start = std::time::Instant::now();
 
                     // Execute the tool (delegates to specialist agent)
                     let args_str = tool_call.arguments.to_string();
                     let result = self.execute_tool(&tool_call.name, &args_str).await?;
 
-                    tracing::info!("Tool {} completed, result length: {} chars", tool_call.name, result.len());
+                    tracing::info!("Tool {} completed in {:?}, result length: {} chars",
+                        tool_call.name, tool_start.elapsed(), result.len());
+                    tracing::debug!("⏱️  [PERF] Tool {}/{} completed at {:?} (took {:?})",
+                        idx + 1, tool_calls.len(), start_time.elapsed(), tool_start.elapsed());
 
                     // Add tool result to messages array for current request
                     messages.push(LlmMessage::tool_result(tool_call.id.clone(), result.clone()));
 
                     // CRITICAL FIX: Add actual tool result content to conversation history
                     // (Previously stored placeholder "Tool executed", now stores actual result for better context)
-                    self.message_history.push_back(LlmMessage::tool_result(tool_call.id, result));
+                    self.message_history.push_back(LlmMessage::tool_result(tool_call.id.clone(), result));
                 }
 
                 // Make follow-up request with tool results to get final response
                 tracing::info!("All tools executed, requesting final response from agent");
+                tracing::debug!("⏱️  [PERF] All tools completed at {:?}, requesting final response", start_time.elapsed());
+
+                // DEBUG: Log messages array to diagnose empty content error
+                tracing::debug!("Messages array before process_with_results ({} messages):", messages.len());
+                for (idx, msg) in messages.iter().enumerate() {
+                    tracing::debug!(
+                        "  Message[{}]: role={}, content_len={}, has_tool_calls={}, has_tool_call_id={}",
+                        idx,
+                        msg.role,
+                        msg.content.len(),
+                        msg.tool_calls.is_some(),
+                        msg.tool_call_id.is_some()
+                    );
+                }
+
                 let mut final_result_rx = agent.process_with_results(messages);
 
                 // Wait for the final streaming response
                 let final_stream = match final_result_rx.recv().await {
-                    Some(Ok(stream)) => Ok(stream),
+                    Some(Ok(stream)) => {
+                        tracing::debug!("⏱️  [PERF] Final streaming response started at {:?}", start_time.elapsed());
+                        Ok(stream)
+                    }
                     Some(Err(e)) => Err(e),
                     None => anyhow::bail!("No final response from agent"),
                 }?;
+
+                // Publish responding status for final response
+                let _ = self.event_bus.publish(Event::new(
+                    "system".to_string(),
+                    "broadcast".to_string(),
+                    EventKind::AgentStatusChange {
+                        agent_id: self.active_agent_id.clone(),
+                        status: AgentStatus::Responding,
+                    },
+                ));
 
                 // Return the final stream
                 Ok(final_stream)
@@ -294,7 +362,13 @@ impl RustbotApi {
             }
         });
 
-        self.message_history.push_back(LlmMessage::new("assistant", full_response.clone()));
+        // CRITICAL: Only add assistant message if it has content
+        // Anthropic API rejects messages with empty content
+        if !full_response.is_empty() {
+            self.message_history.push_back(LlmMessage::new("assistant", full_response.clone()));
+        } else {
+            tracing::warn!("⚠️  Skipping empty assistant message in history");
+        }
 
         Ok(full_response)
     }
@@ -343,7 +417,13 @@ impl RustbotApi {
     /// Add an assistant response to the message history
     /// This should be called after receiving the complete response from streaming
     pub fn add_assistant_response(&mut self, response: String) {
-        self.message_history.push_back(LlmMessage::new("assistant", response));
+        // CRITICAL: Only add assistant message if it has content
+        // Anthropic API rejects messages with empty content
+        if !response.is_empty() {
+            self.message_history.push_back(LlmMessage::new("assistant", response));
+        } else {
+            tracing::warn!("⚠️  Skipping empty assistant message in add_assistant_response");
+        }
 
         // Trim history if needed
         while self.message_history.len() > self.max_history_size {
