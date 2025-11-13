@@ -166,6 +166,9 @@ struct RustbotApp {
     // Agent system
     agents: Vec<Agent>,
     active_agent_id: String,
+    // Agent UI state
+    agent_configs: Vec<AgentConfig>,
+    selected_agent_index: Option<usize>,
 }
 
 #[derive(PartialEq)]
@@ -178,6 +181,7 @@ enum AppView {
 enum SettingsView {
     AiSettings,
     SystemPrompts,
+    Agents,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -292,11 +296,13 @@ impl RustbotApp {
         // Create LLM adapter
         let llm_adapter = Arc::from(create_adapter(AdapterType::OpenRouter, api_key.clone()));
 
-        // Create default assistant agent with personality from system prompts
+        // Create default assistant agent configuration
         let mut assistant_config = AgentConfig::default_assistant();
         assistant_config.personality = system_prompts.personality_instructions.clone();
+
+        // Create agent from config
         let assistant_agent = Agent::new(
-            assistant_config,
+            assistant_config.clone(),
             Arc::clone(&llm_adapter),
             Arc::clone(&event_bus),
             Arc::clone(&runtime),
@@ -323,6 +329,8 @@ impl RustbotApp {
             event_rx,
             agents: vec![assistant_agent],
             active_agent_id: "assistant".to_string(),
+            agent_configs: vec![assistant_config],
+            selected_agent_index: None,
         }
     }
 
@@ -693,6 +701,26 @@ This information is provided automatically to give you context about the current
 
                 ui.separator();
 
+                // Agent selector
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Agent:").size(11.0));
+                    // Find the active agent config
+                    if let Some(config) = self.agent_configs.iter().find(|c| c.id == self.active_agent_id) {
+                        egui::ComboBox::from_id_source("agent_selector")
+                            .selected_text(format!("🤖 {}", config.name))
+                            .show_ui(ui, |ui| {
+                                for agent_config in &self.agent_configs {
+                                    let is_selected = agent_config.id == self.active_agent_id;
+                                    if ui.selectable_label(is_selected, format!("🤖 {}", agent_config.name)).clicked() {
+                                        self.active_agent_id = agent_config.id.clone();
+                                    }
+                                }
+                            });
+                    }
+                });
+
+                ui.add_space(5.0);
+
                 // Input area pinned at bottom
                 ui.horizontal(|ui| {
                     let text_edit_width = ui.available_width() - 70.0;
@@ -816,6 +844,18 @@ This information is provided automatically to give you context about the current
             if system_prompts_button.clicked() {
                 self.settings_view = SettingsView::SystemPrompts;
             }
+
+            ui.add_space(10.0);
+
+            let agents_button = ui.add(
+                egui::SelectableLabel::new(
+                    self.settings_view == SettingsView::Agents,
+                    "Agents"
+                )
+            );
+            if agents_button.clicked() {
+                self.settings_view = SettingsView::Agents;
+            }
         });
         ui.separator();
 
@@ -823,6 +863,7 @@ This information is provided automatically to give you context about the current
         match self.settings_view {
             SettingsView::AiSettings => self.render_ai_settings(ui),
             SettingsView::SystemPrompts => self.render_system_prompts(ui),
+            SettingsView::Agents => self.render_agents_view(ui),
         }
     }
 
@@ -897,6 +938,144 @@ This information is provided automatically to give you context about the current
                     ui.label(egui::RichText::new("* Unsaved changes")
                         .size(12.0)
                         .color(egui::Color32::from_rgb(220, 100, 60)));
+                }
+
+                ui.add_space(20.0); // Bottom padding
+            });
+    }
+
+    fn render_agents_view(&mut self, ui: &mut egui::Ui) {
+        // Use scroll area for agents
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.add_space(20.0);
+                ui.heading("Agents");
+                ui.add_space(10.0);
+
+                ui.label("Configure AI agents with their own instructions and personality:");
+                ui.add_space(15.0);
+
+                // Agent list
+                ui.label(egui::RichText::new("Available Agents:").strong());
+                ui.add_space(10.0);
+
+                // Display each agent
+                for (index, config) in self.agent_configs.iter().enumerate() {
+                    ui.group(|ui| {
+                        ui.horizontal(|ui| {
+                            // Agent name and status
+                            let is_active = config.id == self.active_agent_id;
+                            let status_color = if is_active {
+                                egui::Color32::from_rgb(60, 150, 60)
+                            } else {
+                                egui::Color32::from_rgb(100, 100, 100)
+                            };
+
+                            ui.label(
+                                egui::RichText::new(format!("🤖 {}", config.name))
+                                    .strong()
+                                    .size(16.0)
+                            );
+
+                            if is_active {
+                                ui.label(
+                                    egui::RichText::new("(Active)")
+                                        .size(12.0)
+                                        .color(status_color)
+                                );
+                            }
+
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                // Edit button
+                                if ui.button("Edit").clicked() {
+                                    self.selected_agent_index = Some(index);
+                                }
+
+                                // Set Active button
+                                if !is_active && ui.button("Set Active").clicked() {
+                                    self.active_agent_id = config.id.clone();
+                                }
+                            });
+                        });
+
+                        ui.add_space(5.0);
+                        ui.label(format!("ID: {}", config.id));
+                        ui.label(format!("Model: {}", config.model));
+                    });
+
+                    ui.add_space(10.0);
+                }
+
+                ui.add_space(15.0);
+
+                // Agent editing section
+                if let Some(index) = self.selected_agent_index {
+                    if let Some(config) = self.agent_configs.get_mut(index) {
+                        ui.separator();
+                        ui.add_space(15.0);
+
+                        ui.heading(format!("Edit Agent: {}", config.name));
+                        ui.add_space(10.0);
+
+                        // Agent name
+                        ui.label(egui::RichText::new("Agent Name:").strong());
+                        ui.add_space(5.0);
+                        ui.text_edit_singleline(&mut config.name);
+                        ui.add_space(10.0);
+
+                        // Agent instructions
+                        ui.label(egui::RichText::new("Agent Instructions:").strong());
+                        ui.label("What this agent does and how it should behave:");
+                        ui.add_space(5.0);
+                        ui.add_sized(
+                            [ui.available_width() - 20.0, 150.0],
+                            egui::TextEdit::multiline(&mut config.instructions)
+                                .hint_text("Enter agent-specific instructions...")
+                                .margin(egui::vec2(8.0, 8.0))
+                        );
+
+                        ui.add_space(15.0);
+
+                        // Agent personality
+                        ui.label(egui::RichText::new("Agent Personality:").strong());
+                        ui.label("The agent's communication style and personality:");
+                        ui.add_space(5.0);
+                        ui.add_sized(
+                            [ui.available_width() - 20.0, 150.0],
+                            egui::TextEdit::multiline(&mut config.personality)
+                                .hint_text("Enter agent personality traits...")
+                                .margin(egui::vec2(8.0, 8.0))
+                        );
+
+                        ui.add_space(15.0);
+
+                        // Model selection
+                        ui.label(egui::RichText::new("LLM Model:").strong());
+                        ui.add_space(5.0);
+                        egui::ComboBox::from_label("")
+                            .selected_text(&config.model)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut config.model, "anthropic/claude-sonnet-4.5".to_string(), "Claude Sonnet 4.5");
+                                ui.selectable_value(&mut config.model, "anthropic/claude-sonnet-4".to_string(), "Claude Sonnet 4");
+                                ui.selectable_value(&mut config.model, "anthropic/claude-opus-4".to_string(), "Claude Opus 4");
+                                ui.selectable_value(&mut config.model, "openai/gpt-4".to_string(), "GPT-4");
+                            });
+
+                        ui.add_space(15.0);
+
+                        // Action buttons
+                        ui.horizontal(|ui| {
+                            if ui.button("Save Changes").clicked() {
+                                // Apply changes to agent (will implement recreation later)
+                                self.selected_agent_index = None;
+                            }
+
+                            if ui.button("Cancel").clicked() {
+                                self.selected_agent_index = None;
+                            }
+                        });
+                    }
                 }
 
                 ui.add_space(20.0); // Bottom padding
