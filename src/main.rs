@@ -169,6 +169,18 @@ struct RustbotApp {
     // Agent UI state
     agent_configs: Vec<AgentConfig>,
     selected_agent_index: Option<usize>,
+    // Event visualization
+    event_history: Vec<VisualEvent>,
+    show_event_visualizer: bool,
+}
+
+/// Visual representation of an event for the event visualizer
+#[derive(Clone, Debug)]
+struct VisualEvent {
+    source: String,
+    destination: String,
+    kind: String,
+    timestamp: chrono::DateTime<chrono::Local>,
 }
 
 #[derive(PartialEq)]
@@ -331,6 +343,8 @@ impl RustbotApp {
             active_agent_id: "assistant".to_string(),
             agent_configs: vec![assistant_config],
             selected_agent_index: None,
+            event_history: Vec::new(),
+            show_event_visualizer: true, // Start with visualizer open for debugging
         }
     }
 
@@ -701,25 +715,51 @@ This information is provided automatically to give you context about the current
 
                 ui.separator();
 
-                // Agent selector
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Agent:").size(11.0));
-                    // Find the active agent config
-                    if let Some(config) = self.agent_configs.iter().find(|c| c.id == self.active_agent_id) {
-                        egui::ComboBox::from_id_source("agent_selector")
-                            .selected_text(format!("🤖 {}", config.name))
-                            .show_ui(ui, |ui| {
-                                for agent_config in &self.agent_configs {
-                                    let is_selected = agent_config.id == self.active_agent_id;
-                                    if ui.selectable_label(is_selected, format!("🤖 {}", agent_config.name)).clicked() {
-                                        self.active_agent_id = agent_config.id.clone();
-                                    }
-                                }
-                            });
-                    }
-                });
+                // Status indicator when processing
+                if self.is_waiting {
+                    ui.horizontal(|ui| {
+                        ui.add_space(10.0);
 
-                ui.add_space(5.0);
+                        // Animated spinner
+                        let spinner_rect = egui::Rect::from_center_size(
+                            egui::pos2(ui.cursor().left() + 8.0, ui.cursor().top() + 8.0),
+                            egui::vec2(12.0, 12.0),
+                        );
+                        ui.painter().circle_stroke(
+                            spinner_rect.center(),
+                            5.0,
+                            egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 150, 255)),
+                        );
+                        ui.painter().circle_filled(
+                            egui::pos2(
+                                spinner_rect.center().x + 5.0 * self.spinner_rotation.cos(),
+                                spinner_rect.center().y + 5.0 * self.spinner_rotation.sin(),
+                            ),
+                            2.0,
+                            egui::Color32::from_rgb(100, 150, 255),
+                        );
+
+                        ui.add_space(20.0);
+
+                        // Get agent status
+                        let status_text = if let Some(agent) = self.agents.iter().find(|a| a.id() == self.active_agent_id) {
+                            match agent.status() {
+                                crate::events::AgentStatus::Thinking => "Assistant is thinking...",
+                                crate::events::AgentStatus::Responding => "Assistant is responding...",
+                                _ => "Processing your message...",
+                            }
+                        } else {
+                            "Processing..."
+                        };
+
+                        ui.label(
+                            egui::RichText::new(status_text)
+                                .size(12.0)
+                                .color(egui::Color32::from_rgb(100, 150, 255))
+                        );
+                    });
+                    ui.add_space(5.0);
+                }
 
                 // Input area pinned at bottom
                 ui.horizontal(|ui| {
@@ -1087,6 +1127,27 @@ impl eframe::App for RustbotApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Process events from the event bus
         while let Ok(event) = self.event_rx.try_recv() {
+            // Track event for visualization (keep last 50 events)
+            let event_kind_str = match &event.kind {
+                EventKind::UserMessage(_) => "UserMessage".to_string(),
+                EventKind::AgentMessage { .. } => "AgentMessage".to_string(),
+                EventKind::AgentStatusChange { .. } => "StatusChange".to_string(),
+                EventKind::SystemCommand(_) => "SystemCommand".to_string(),
+                EventKind::Test(_) => "Test".to_string(),
+            };
+
+            self.event_history.push(VisualEvent {
+                source: event.source.clone(),
+                destination: event.destination.clone(),
+                kind: event_kind_str,
+                timestamp: event.timestamp,
+            });
+
+            // Keep only last 50 events
+            if self.event_history.len() > 50 {
+                self.event_history.remove(0);
+            }
+
             // Check if this event is for us (user or broadcast)
             if event.is_for("user") {
                 match event.kind {
@@ -1231,6 +1292,75 @@ impl eframe::App for RustbotApp {
                                 self.current_view = AppView::Settings;
                             }
                         });
+
+                        ui.add_space(20.0);
+                        ui.separator();
+                        ui.add_space(10.0);
+
+                        // Event Visualizer section
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Event Flow").strong().size(14.0));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.small_button(if self.show_event_visualizer { "▼" } else { "▶" }).clicked() {
+                                    self.show_event_visualizer = !self.show_event_visualizer;
+                                }
+                            });
+                        });
+
+                        if self.show_event_visualizer {
+                            ui.add_space(5.0);
+
+                            egui::ScrollArea::vertical()
+                                .max_height(300.0)
+                                .auto_shrink([false; 2])
+                                .show(ui, |ui| {
+                                    if self.event_history.is_empty() {
+                                        ui.label(egui::RichText::new("No events yet")
+                                            .size(11.0)
+                                            .color(egui::Color32::from_rgb(120, 120, 120)));
+                                    } else {
+                                        // Show most recent events first
+                                        for event in self.event_history.iter().rev().take(10) {
+                                            ui.group(|ui| {
+                                                ui.set_width(ui.available_width());
+
+                                                // Event kind with color coding
+                                                let (color, icon) = match event.kind.as_str() {
+                                                    "UserMessage" => (egui::Color32::from_rgb(100, 150, 255), "📤"),
+                                                    "AgentMessage" => (egui::Color32::from_rgb(100, 255, 150), "📥"),
+                                                    "StatusChange" => (egui::Color32::from_rgb(255, 200, 100), "🔄"),
+                                                    "SystemCommand" => (egui::Color32::from_rgb(255, 100, 100), "⚙️"),
+                                                    _ => (egui::Color32::from_rgb(150, 150, 150), "📨"),
+                                                };
+
+                                                ui.horizontal(|ui| {
+                                                    ui.label(egui::RichText::new(icon).size(10.0));
+                                                    ui.label(
+                                                        egui::RichText::new(&event.kind)
+                                                            .size(10.0)
+                                                            .color(color)
+                                                    );
+                                                });
+
+                                                // Source → Destination
+                                                ui.label(
+                                                    egui::RichText::new(format!("{} → {}", event.source, event.destination))
+                                                        .size(9.0)
+                                                        .color(egui::Color32::from_rgb(150, 150, 150))
+                                                );
+
+                                                // Timestamp
+                                                ui.label(
+                                                    egui::RichText::new(event.timestamp.format("%H:%M:%S").to_string())
+                                                        .size(8.0)
+                                                        .color(egui::Color32::from_rgb(100, 100, 100))
+                                                );
+                                            });
+                                            ui.add_space(3.0);
+                                        }
+                                    }
+                                });
+                        }
                     });
                 });
         }
