@@ -9,6 +9,75 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use egui_phosphor::regular as icons;
 
+fn create_window_icon() -> egui::IconData {
+    // Create a 32x32 RGBA icon with an "R" for Rustbot
+    let size = 32;
+    let mut rgba = vec![0u8; size * size * 4];
+
+    // Background color: Rust orange (#CE422B)
+    let bg_color = [206, 66, 43, 255];
+
+    // Fill background
+    for i in 0..size * size {
+        let offset = i * 4;
+        rgba[offset..offset + 4].copy_from_slice(&bg_color);
+    }
+
+    // Helper function to set a pixel
+    let set_pixel = |rgba: &mut [u8], x: usize, y: usize, color: [u8; 4]| {
+        if x < size && y < size {
+            let offset = (y * size + x) * 4;
+            rgba[offset..offset + 4].copy_from_slice(&color);
+        }
+    };
+
+    // Draw a bold "R" in white (3 pixels wide for visibility)
+    let white = [255, 255, 255, 255];
+
+    // Vertical line (left side of R) - 3 pixels wide
+    for y in 8..24 {
+        for dx in 0..3 {
+            set_pixel(&mut rgba, 10 + dx, y, white);
+        }
+    }
+
+    // Top horizontal line - 3 pixels tall
+    for x in 10..20 {
+        for dy in 0..3 {
+            set_pixel(&mut rgba, x, 8 + dy, white);
+        }
+    }
+
+    // Top right curve/vertical
+    for y in 8..16 {
+        for dx in 0..3 {
+            set_pixel(&mut rgba, 19 + dx, y, white);
+        }
+    }
+
+    // Middle horizontal line - 3 pixels tall
+    for x in 10..20 {
+        for dy in 0..3 {
+            set_pixel(&mut rgba, x, 15 + dy, white);
+        }
+    }
+
+    // Diagonal leg (bottom right) - 3 pixels wide
+    for i in 0..8 {
+        for dx in 0..3 {
+            for dy in 0..3 {
+                set_pixel(&mut rgba, 16 + i + dx, 16 + i + dy, white);
+            }
+        }
+    }
+
+    egui::IconData {
+        rgba,
+        width: size as u32,
+        height: size as u32,
+    }
+}
+
 fn main() -> Result<(), eframe::Error> {
     // Initialize tracing for logging
     tracing_subscriber::fmt::init();
@@ -19,7 +88,8 @@ fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([800.0, 600.0])
-            .with_title("Rustbot - AI Assistant"),
+            .with_title("Rustbot - AI Assistant")
+            .with_icon(create_window_icon()),
         ..Default::default()
     };
 
