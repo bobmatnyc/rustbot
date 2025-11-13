@@ -169,7 +169,7 @@ impl RustbotApi {
         }
 
         // Process message through agent (non-blocking)
-        let result_rx = agent.process_message_nonblocking(
+        let mut result_rx = agent.process_message_nonblocking(
             message.to_string(),
             context_messages,
             tools,
@@ -184,7 +184,60 @@ impl RustbotApi {
             self.message_history.pop_front();
         }
 
-        Ok(result_rx)
+        // Wait for the agent response and handle tool execution if needed
+        let agent_response = self.runtime.block_on(async {
+            result_rx.recv().await
+                .context("No response from agent")?
+        })?;
+
+        match agent_response {
+            AgentResponse::StreamingResponse(stream) => {
+                // No tools needed - return stream directly wrapped in Result
+                let (tx, rx) = mpsc::unbounded_channel();
+                let _ = tx.send(Ok(stream));
+                Ok(rx)
+            }
+            AgentResponse::NeedsToolExecution { tool_calls, mut messages } => {
+                tracing::info!("Tool execution required: {} tools to execute", tool_calls.len());
+
+                // Execute each tool call sequentially
+                for tool_call in tool_calls {
+                    tracing::info!("Executing tool: {} (ID: {})", tool_call.name, tool_call.id);
+
+                    // Execute the tool (delegates to specialist agent)
+                    let args_str = tool_call.arguments.to_string();
+                    let result = self.runtime.block_on(async {
+                        self.execute_tool(&tool_call.name, &args_str).await
+                    })?;
+
+                    tracing::info!("Tool {} completed, result length: {} chars", tool_call.name, result.len());
+
+                    // Add tool result to message history
+                    messages.push(LlmMessage::tool_result(tool_call.id.clone(), result));
+
+                    // Also add to our conversation history for context
+                    self.message_history.push_back(LlmMessage::tool_result(tool_call.id, "Tool executed".to_string()));
+                }
+
+                // Make follow-up request with tool results to get final response
+                tracing::info!("All tools executed, requesting final response from agent");
+                let mut final_result_rx = agent.process_with_results(messages);
+
+                // Wait for the final streaming response
+                let final_stream = self.runtime.block_on(async {
+                    match final_result_rx.recv().await {
+                        Some(Ok(stream)) => Ok(stream),
+                        Some(Err(e)) => Err(e),
+                        None => anyhow::bail!("No final response from agent"),
+                    }
+                })?;
+
+                // Return the final stream wrapped in Result
+                let (tx, rx) = mpsc::unbounded_channel();
+                let _ = tx.send(Ok(final_stream));
+                Ok(rx)
+            }
+        }
     }
 
     /// Send a message and wait for complete response (blocking)
@@ -297,7 +350,10 @@ impl ToolExecutor for RustbotApi {
         let stream_rx = self.runtime.block_on(async {
             let mut rx = result_rx;
             match rx.recv().await {
-                Some(Ok(stream)) => Ok(stream),
+                Some(Ok(AgentResponse::StreamingResponse(stream))) => Ok(stream),
+                Some(Ok(AgentResponse::NeedsToolExecution { .. })) => {
+                    anyhow::bail!("Unexpected: Specialist agent requested tool execution")
+                }
                 Some(Err(e)) => Err(e),
                 None => anyhow::bail!("No response from specialist agent"),
             }
