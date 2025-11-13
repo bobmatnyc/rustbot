@@ -1,7 +1,9 @@
+mod agent;
 mod events;
 mod llm;
 mod version;
 
+use agent::{Agent, AgentConfig};
 use eframe::egui;
 use events::{Event, EventBus, EventKind, SystemCommand};
 use llm::{create_adapter, AdapterType, LlmAdapter, LlmRequest, Message as LlmMessage};
@@ -149,7 +151,7 @@ struct RustbotApp {
     response_rx: Option<mpsc::UnboundedReceiver<String>>,
     current_response: String,
     is_waiting: bool,
-    runtime: tokio::runtime::Runtime,
+    runtime: Arc<tokio::runtime::Runtime>,
     spinner_rotation: f32,
     token_stats: TokenStats,
     context_tracker: ContextTracker,
@@ -161,6 +163,9 @@ struct RustbotApp {
     // Event system
     event_bus: Arc<EventBus>,
     event_rx: broadcast::Receiver<Event>,
+    // Agent system
+    agents: Vec<Agent>,
+    active_agent_id: String,
 }
 
 #[derive(PartialEq)]
@@ -281,14 +286,31 @@ impl RustbotApp {
         let event_bus = Arc::new(EventBus::new());
         let event_rx = event_bus.subscribe();
 
+        // Create runtime
+        let runtime = Arc::new(tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime"));
+
+        // Create LLM adapter
+        let llm_adapter = Arc::from(create_adapter(AdapterType::OpenRouter, api_key.clone()));
+
+        // Create default assistant agent with personality from system prompts
+        let mut assistant_config = AgentConfig::default_assistant();
+        assistant_config.personality = system_prompts.personality_instructions.clone();
+        let assistant_agent = Agent::new(
+            assistant_config,
+            Arc::clone(&llm_adapter),
+            Arc::clone(&event_bus),
+            Arc::clone(&runtime),
+            system_prompts.system_instructions.clone(),
+        );
+
         Self {
             message_input: String::new(),
             messages: Vec::new(),
-            llm_adapter: Arc::from(create_adapter(AdapterType::OpenRouter, api_key)),
+            llm_adapter,
             response_rx: None,
             current_response: String::new(),
             is_waiting: false,
-            runtime: tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime"),
+            runtime,
             spinner_rotation: 0.0,
             token_stats: Self::check_and_reset_daily_stats(token_stats),
             context_tracker: ContextTracker::default(),
@@ -299,6 +321,8 @@ impl RustbotApp {
             selected_model: "Claude Sonnet 4.5".to_string(),
             event_bus,
             event_rx,
+            agents: vec![assistant_agent],
+            active_agent_id: "assistant".to_string(),
         }
     }
 
@@ -525,36 +549,18 @@ This information is provided automatically to give you context about the current
             output_tokens: None,
         });
 
-        // Prepare conversation history for API using unified format
-        let mut api_messages = Vec::new();
-
-        // Build complete system message with prompts and context
-        let mut system_parts = Vec::new();
-
-        // Add user-defined system instructions
-        if !self.system_prompts.system_instructions.is_empty() {
-            system_parts.push(self.system_prompts.system_instructions.clone());
-        }
-
-        // Add user-defined personality instructions
-        if !self.system_prompts.personality_instructions.is_empty() {
-            system_parts.push(self.system_prompts.personality_instructions.clone());
-        }
+        // Build conversation history for agent
+        let mut context_messages = Vec::new();
 
         // Add dynamic system context
-        system_parts.push(self.generate_system_context());
+        context_messages.push(LlmMessage {
+            role: "system".to_string(),
+            content: self.generate_system_context(),
+        });
 
-        // Combine all system parts and add as system message
-        if !system_parts.is_empty() {
-            let system_content = system_parts.join("\n\n");
-            api_messages.push(LlmMessage {
-                role: "system".to_string(),
-                content: system_content.trim().to_string(),
-            });
-        }
-
-        for msg in &self.messages {
-            api_messages.push(LlmMessage {
+        // Add conversation history (excluding the message we just added)
+        for msg in &self.messages[..self.messages.len() - 1] {
+            context_messages.push(LlmMessage {
                 role: match msg.role {
                     MessageRole::User => "user".to_string(),
                     MessageRole::Assistant => "assistant".to_string(),
@@ -563,45 +569,45 @@ This information is provided automatically to give you context about the current
             });
         }
 
-        // Create unified LLM request
-        let request = LlmRequest::new(api_messages);
-
-        // Update context tracker with current token counts
-        let system_content_tokens = if !system_parts.is_empty() {
-            self.estimate_tokens(&system_parts.join("\n\n"))
-        } else {
-            0
-        };
-
+        // Update context tracker
+        let system_content_tokens = self.estimate_tokens(&self.generate_system_context());
         let conversation_total_tokens: u32 = self.messages.iter()
             .map(|msg| self.estimate_tokens(&msg.content))
             .sum();
-
         self.context_tracker.update_counts(system_content_tokens, conversation_total_tokens);
 
-        // Create channel for streaming responses
-        let (tx, rx) = mpsc::unbounded_channel();
-        self.response_rx = Some(rx);
-        self.current_response.clear();
-        self.is_waiting = true;
+        // Find the active agent and process message
+        if let Some(agent) = self.agents.iter_mut().find(|a| a.id() == self.active_agent_id) {
+            self.is_waiting = true;
+            self.current_response.clear();
 
-        // Add placeholder for assistant response
-        self.messages.push(ChatMessage {
-            role: MessageRole::Assistant,
-            content: String::new(),
-            input_tokens: None,
-            output_tokens: None,
-        });
+            // Process message through agent
+            let content_clone = content.clone();
+            let rt = Arc::clone(&self.runtime);
 
-        // Spawn async task to call LLM using the unified interface
-        let adapter = Arc::clone(&self.llm_adapter);
-        let ctx_clone = ctx.clone();
-        self.runtime.spawn(async move {
-            if let Err(e) = adapter.stream_chat(request, tx).await {
-                tracing::error!("LLM stream error: {}", e);
+            match rt.block_on(agent.process_message(content_clone, context_messages)) {
+                Ok(rx) => {
+                    self.response_rx = Some(rx);
+
+                    // Add placeholder for assistant response
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Assistant,
+                        content: String::new(),
+                        input_tokens: None,
+                        output_tokens: None,
+                    });
+
+                    ctx.request_repaint();
+                }
+                Err(e) => {
+                    tracing::error!("Failed to process message through agent: {}", e);
+                    self.is_waiting = false;
+                }
             }
-            ctx_clone.request_repaint(); // Final repaint when done
-        });
+        } else {
+            tracing::error!("Active agent '{}' not found", self.active_agent_id);
+            self.is_waiting = false;
+        }
     }
 
     fn render_chat_view(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
