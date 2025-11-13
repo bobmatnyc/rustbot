@@ -1,10 +1,12 @@
+mod events;
 mod llm;
 mod version;
 
 use eframe::egui;
+use events::{Event, EventBus, EventKind, SystemCommand};
 use llm::{create_adapter, AdapterType, LlmAdapter, LlmRequest, Message as LlmMessage};
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use egui_phosphor::regular as icons;
@@ -156,6 +158,9 @@ struct RustbotApp {
     settings_view: SettingsView,
     system_prompts: SystemPrompts,
     selected_model: String,
+    // Event system
+    event_bus: Arc<EventBus>,
+    event_rx: broadcast::Receiver<Event>,
 }
 
 #[derive(PartialEq)]
@@ -272,6 +277,10 @@ impl RustbotApp {
         let token_stats = Self::load_token_stats().unwrap_or_default();
         let system_prompts = Self::load_system_prompts().unwrap_or_default();
 
+        // Create event bus
+        let event_bus = Arc::new(EventBus::new());
+        let event_rx = event_bus.subscribe();
+
         Self {
             message_input: String::new(),
             messages: Vec::new(),
@@ -288,6 +297,8 @@ impl RustbotApp {
             settings_view: SettingsView::AiSettings,
             system_prompts,
             selected_model: "Claude Sonnet 4.5".to_string(),
+            event_bus,
+            event_rx,
         }
     }
 
@@ -481,8 +492,25 @@ This information is provided automatically to give you context about the current
             return;
         }
 
+        // Publish UserMessage event instead of directly calling LLM
+        let event = Event::new(
+            "user".to_string(),
+            "assistant".to_string(),  // Default agent for now
+            EventKind::UserMessage(self.message_input.clone()),
+        );
+
+        if let Err(e) = self.event_bus.publish(event) {
+            tracing::error!("Failed to publish user message event: {}", e);
+            return;
+        }
+
+        // Clear input immediately after publishing event
+        self.message_input.clear();
+    }
+
+    fn handle_user_message_event(&mut self, ctx: &egui::Context, content: String) {
         // Calculate input tokens
-        let input_tokens = self.estimate_tokens(&self.message_input);
+        let input_tokens = self.estimate_tokens(&content);
         self.token_stats.daily_input += input_tokens;
         self.token_stats.total_input += input_tokens;
 
@@ -492,7 +520,7 @@ This information is provided automatically to give you context about the current
         // Add user message
         self.messages.push(ChatMessage {
             role: MessageRole::User,
-            content: self.message_input.clone(),
+            content: content.clone(),
             input_tokens: Some(input_tokens),
             output_tokens: None,
         });
@@ -574,8 +602,6 @@ This information is provided automatically to give you context about the current
             }
             ctx_clone.request_repaint(); // Final repaint when done
         });
-
-        self.message_input.clear();
     }
 
     fn render_chat_view(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -874,6 +900,42 @@ This information is provided automatically to give you context about the current
 
 impl eframe::App for RustbotApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Process events from the event bus
+        while let Ok(event) = self.event_rx.try_recv() {
+            // Check if this event is for us (user or broadcast)
+            if event.is_for("user") {
+                match event.kind {
+                    EventKind::UserMessage(content) => {
+                        // Handle user message by calling LLM
+                        self.handle_user_message_event(ctx, content);
+                    }
+                    EventKind::AgentMessage { agent_id, content } => {
+                        tracing::info!("Received agent message from {}: {}", agent_id, content);
+                        // Agent messages are already handled in streaming
+                    }
+                    EventKind::AgentStatusChange { agent_id, status } => {
+                        tracing::info!("Agent {} status changed to {:?}", agent_id, status);
+                    }
+                    EventKind::SystemCommand(cmd) => {
+                        match cmd {
+                            SystemCommand::ClearConversation => {
+                                self.clear_conversation();
+                            }
+                            SystemCommand::SaveState => {
+                                tracing::info!("Save state command received");
+                            }
+                            SystemCommand::LoadState => {
+                                tracing::info!("Load state command received");
+                            }
+                        }
+                    }
+                    EventKind::Test(msg) => {
+                        tracing::info!("Test event received: {}", msg);
+                    }
+                }
+            }
+        }
+
         // Update spinner rotation when waiting
         if self.is_waiting {
             self.spinner_rotation += 0.1;
