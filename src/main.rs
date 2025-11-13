@@ -291,24 +291,89 @@ impl RustbotApp {
         }
     }
 
-    fn load_system_prompts() -> Result<SystemPrompts, Box<dyn std::error::Error>> {
-        let mut path = PathBuf::from(".");
-        path.push("rustbot_prompts.json");
+    fn get_instructions_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+        let home_dir = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .map_err(|e| format!("Could not determine home directory: {}", e))?;
 
-        if !path.exists() {
-            return Ok(SystemPrompts::default());
+        let mut dir = PathBuf::from(home_dir);
+        dir.push(".rustbot");
+        dir.push("instructions");
+
+        // Create directory if it doesn't exist
+        if !dir.exists() {
+            std::fs::create_dir_all(&dir)?;
         }
 
-        let content = std::fs::read_to_string(path)?;
-        let prompts: SystemPrompts = serde_json::from_str(&content)?;
-        Ok(prompts)
+        Ok(dir)
+    }
+
+    fn load_system_prompts() -> Result<SystemPrompts, Box<dyn std::error::Error>> {
+        let mut dir = Self::get_instructions_dir()?;
+
+        // Load system instructions
+        dir.push("system");
+        dir.push("current");
+        let system_instructions = if dir.exists() {
+            std::fs::read_to_string(&dir)?
+        } else {
+            String::new()
+        };
+        dir.pop();
+        dir.pop();
+
+        // Load personality instructions
+        dir.push("personality");
+        dir.push("current");
+        let personality_instructions = if dir.exists() {
+            std::fs::read_to_string(&dir)?
+        } else {
+            String::new()
+        };
+
+        Ok(SystemPrompts {
+            system_instructions,
+            personality_instructions,
+        })
     }
 
     fn save_system_prompts(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut path = PathBuf::from(".");
-        path.push("rustbot_prompts.json");
-        let content = serde_json::to_string_pretty(&self.system_prompts)?;
-        std::fs::write(path, content)?;
+        let base_dir = Self::get_instructions_dir()?;
+
+        // Save system instructions
+        let mut system_dir = base_dir.clone();
+        system_dir.push("system");
+        std::fs::create_dir_all(&system_dir)?;
+
+        let system_current = system_dir.join("current");
+
+        // Create backup if current exists
+        if system_current.exists() {
+            let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+            let backup_path = system_dir.join(format!("backup_{}", timestamp));
+            std::fs::copy(&system_current, &backup_path)?;
+        }
+
+        // Write new current
+        std::fs::write(&system_current, &self.system_prompts.system_instructions)?;
+
+        // Save personality instructions
+        let mut personality_dir = base_dir.clone();
+        personality_dir.push("personality");
+        std::fs::create_dir_all(&personality_dir)?;
+
+        let personality_current = personality_dir.join("current");
+
+        // Create backup if current exists
+        if personality_current.exists() {
+            let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+            let backup_path = personality_dir.join(format!("backup_{}", timestamp));
+            std::fs::copy(&personality_current, &backup_path)?;
+        }
+
+        // Write new current
+        std::fs::write(&personality_current, &self.system_prompts.personality_instructions)?;
+
         Ok(())
     }
 
@@ -749,9 +814,10 @@ This information is provided automatically to give you context about the current
                 ui.label(egui::RichText::new("System Instructions:").strong());
                 ui.add_space(5.0);
                 let system_instructions_response = ui.add_sized(
-                    [ui.available_width(), 200.0],
+                    [ui.available_width() - 20.0, 200.0],
                     egui::TextEdit::multiline(&mut self.system_prompts.system_instructions)
                         .hint_text("Enter system instructions for the AI...")
+                        .margin(egui::vec2(8.0, 8.0))
                 );
 
                 ui.add_space(15.0);
@@ -760,9 +826,10 @@ This information is provided automatically to give you context about the current
                 ui.label(egui::RichText::new("Personality Instructions:").strong());
                 ui.add_space(5.0);
                 let personality_response = ui.add_sized(
-                    [ui.available_width(), 200.0],
+                    [ui.available_width() - 20.0, 200.0],
                     egui::TextEdit::multiline(&mut self.system_prompts.personality_instructions)
                         .hint_text("Enter personality instructions for the AI...")
+                        .margin(egui::vec2(8.0, 8.0))
                 );
 
                 ui.add_space(15.0);
