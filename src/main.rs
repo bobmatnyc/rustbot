@@ -1,7 +1,7 @@
 mod llm;
 
 use eframe::egui;
-use llm::{LlmClient, Message as LlmMessage};
+use llm::{create_adapter, AdapterType, LlmAdapter, LlmRequest, Message as LlmMessage};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -33,7 +33,7 @@ fn main() -> Result<(), eframe::Error> {
 struct RustbotApp {
     message_input: String,
     messages: Vec<ChatMessage>,
-    llm_client: Arc<LlmClient>,
+    llm_adapter: Arc<dyn LlmAdapter>,
     response_rx: Option<mpsc::UnboundedReceiver<String>>,
     current_response: String,
     is_waiting: bool,
@@ -55,7 +55,7 @@ impl RustbotApp {
         Self {
             message_input: String::new(),
             messages: Vec::new(),
-            llm_client: Arc::new(LlmClient::new(api_key)),
+            llm_adapter: Arc::from(create_adapter(AdapterType::OpenRouter, api_key)),
             response_rx: None,
             current_response: String::new(),
             is_waiting: false,
@@ -74,7 +74,7 @@ impl RustbotApp {
             content: self.message_input.clone(),
         });
 
-        // Prepare conversation history for API
+        // Prepare conversation history for API using unified format
         let mut api_messages = Vec::new();
         for msg in &self.messages {
             api_messages.push(LlmMessage {
@@ -85,6 +85,9 @@ impl RustbotApp {
                 content: msg.content.clone(),
             });
         }
+
+        // Create unified LLM request
+        let request = LlmRequest::new(api_messages);
 
         // Create channel for streaming responses
         let (tx, rx) = mpsc::unbounded_channel();
@@ -98,11 +101,11 @@ impl RustbotApp {
             content: String::new(),
         });
 
-        // Spawn async task to call LLM
-        let client = Arc::clone(&self.llm_client);
+        // Spawn async task to call LLM using the unified interface
+        let adapter = Arc::clone(&self.llm_adapter);
         let ctx_clone = ctx.clone();
         self.runtime.spawn(async move {
-            if let Err(e) = client.stream_chat(api_messages, tx).await {
+            if let Err(e) = adapter.stream_chat(request, tx).await {
                 tracing::error!("LLM stream error: {}", e);
             }
             ctx_clone.request_repaint(); // Final repaint when done
@@ -142,7 +145,7 @@ impl eframe::App for RustbotApp {
             (egui::TextStyle::Body, egui::FontId::new(16.0, egui::FontFamily::Proportional)),
             (egui::TextStyle::Button, egui::FontId::new(16.0, egui::FontFamily::Proportional)),
             (egui::TextStyle::Small, egui::FontId::new(14.0, egui::FontFamily::Proportional)),
-            (egui::TextStyle::Monospace, egui::FontId::new(14.0, egui::FontFamily::Monospace)),
+            (egui::TextStyle::Monospace, egui::FontId::new(14.0, egui::FontFamily::Proportional)),
         ].into();
         ctx.set_style(style);
 
