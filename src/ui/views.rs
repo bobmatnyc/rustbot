@@ -63,6 +63,13 @@ impl crate::RustbotApp {
                                 egui::RichText::new(format!("{}:", label)).strong(),
                             );
 
+                            // Copy button for assistant messages (only if message has content)
+                            if msg.role == MessageRole::Assistant && !msg.content.is_empty() {
+                                if ui.button(format!("{} Copy", icons::CLIPBOARD)).clicked() {
+                                    ui.output_mut(|o| o.copied_text = msg.content.clone());
+                                }
+                            }
+
                             if msg.content.is_empty() && self.is_waiting {
                                 // Draw spinner
                                 let spinner_size = 12.0;
