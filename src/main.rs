@@ -470,6 +470,12 @@ This information is provided automatically to give you context about the current
         )
     }
 
+    fn clear_conversation(&mut self) {
+        self.messages.clear();
+        self.current_response.clear();
+        self.context_tracker.update_counts(0, 0);
+    }
+
     fn send_message(&mut self, ctx: &egui::Context) {
         if self.message_input.trim().is_empty() || self.is_waiting {
             return;
@@ -699,6 +705,17 @@ This information is provided automatically to give you context about the current
                     ))
                     .size(11.0)
                     .color(egui::Color32::from_rgb(120, 120, 120)));
+
+                    // Add space before clear button
+                    ui.add_space(20.0);
+
+                    // Clear chat button
+                    if ui.button(egui::RichText::new("🗑 Clear Chat")
+                        .size(11.0))
+                        .on_hover_text("Clear conversation history")
+                        .clicked() {
+                        self.clear_conversation();
+                    }
                 });
 
                 // Context window progress bar
