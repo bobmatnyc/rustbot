@@ -2,7 +2,7 @@
 // This provides the core interface that both UI and external code can use
 // Design principle: All functionality accessible programmatically
 
-use crate::agent::{Agent, AgentConfig, ToolDefinition};
+use crate::agent::{Agent, AgentConfig, AgentResponse, ToolDefinition};
 use crate::events::{Event, EventBus, EventKind, AgentStatus};
 use crate::llm::{Message as LlmMessage, LlmAdapter};
 use crate::tool_executor::ToolExecutor;

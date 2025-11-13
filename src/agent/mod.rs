@@ -19,7 +19,7 @@ pub mod loader;
 pub mod tools;
 
 use crate::events::{Event, EventBus, EventKind, AgentStatus};
-use crate::llm::{LlmAdapter, LlmRequest, Message as LlmMessage};
+use crate::llm::{LlmAdapter, LlmRequest, Message as LlmMessage, ToolCall};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -149,6 +149,24 @@ For **direct response** intents:
 - Be transparent about your limitations
 - If unsure, explain what information you'd need to search for"#.to_string()
     }
+}
+
+/// Response from agent message processing
+///
+/// Two-phase execution pattern to avoid circular dependencies:
+/// - Agent detects tool calls and returns them to caller
+/// - Caller (RustbotApi) executes tools and makes follow-up request
+pub enum AgentResponse {
+    /// Normal streaming response - no tools needed
+    StreamingResponse(mpsc::UnboundedReceiver<String>),
+
+    /// Tool calls detected - need execution before final response
+    NeedsToolExecution {
+        /// Tool calls requested by the LLM
+        tool_calls: Vec<ToolCall>,
+        /// Conversation history including the assistant's tool call message
+        messages: Vec<LlmMessage>,
+    },
 }
 
 /// An AI agent that processes messages and responds via the event system
@@ -338,6 +356,12 @@ impl Agent {
     /// Process a message without blocking - returns a channel to poll for the result
     /// This spawns the async work in the background and immediately returns
     ///
+    /// Two-phase execution pattern for tool calls:
+    /// 1. If tools provided, use complete_chat to detect tool calls
+    /// 2. Return AgentResponse::NeedsToolExecution if tools detected
+    /// 3. Caller executes tools and calls process_with_results
+    /// 4. Finally stream the response
+    ///
     /// # Arguments
     /// * `user_message` - The message to process
     /// * `context_messages` - Previous conversation messages for context
@@ -347,7 +371,7 @@ impl Agent {
         user_message: String,
         context_messages: Vec<LlmMessage>,
         tools: Option<Vec<ToolDefinition>>,
-    ) -> mpsc::UnboundedReceiver<Result<mpsc::UnboundedReceiver<String>>> {
+    ) -> mpsc::UnboundedReceiver<Result<AgentResponse>> {
         let (result_tx, result_rx) = mpsc::unbounded_channel();
 
         // Clone everything we need for the async task
@@ -387,30 +411,138 @@ impl Agent {
             api_messages.push(LlmMessage::new("user", user_message));
 
             // Create request with web search if enabled
-            let mut request = LlmRequest::new(api_messages);
+            let mut request = LlmRequest::new(api_messages.clone());
             request.web_search = Some(web_search_enabled);
 
-            // Add tools if provided (for primary agent delegation)
-            if let Some(tool_defs) = tools {
+            let result = if let Some(tool_defs) = tools {
+                // Tools provided - use complete_chat to detect tool calls
                 request.tools = Some(tool_defs);
-                request.tool_choice = Some("auto".to_string()); // Let LLM decide when to use tools
+                request.tool_choice = Some("auto".to_string());
+
+                tracing::info!("Processing message with tools enabled");
+
+                // Use complete_chat for tool detection
+                match llm_adapter.complete_chat(request).await {
+                    Ok(response) => {
+                        if let Some(tool_calls) = response.tool_calls {
+                            // Tool calls detected - return for execution
+                            tracing::info!("Tool calls detected: {} calls", tool_calls.len());
+
+                            // Add assistant message with tool calls to history
+                            api_messages.push(LlmMessage::with_tool_calls(
+                                response.content,
+                                tool_calls.clone(),
+                            ));
+
+                            Ok(AgentResponse::NeedsToolExecution {
+                                tool_calls,
+                                messages: api_messages,
+                            })
+                        } else {
+                            // No tool calls - stream the response we already got
+                            tracing::info!("No tool calls detected, streaming response");
+
+                            let (tx, rx) = mpsc::unbounded_channel();
+                            let _ = tx.send(response.content);
+
+                            // Publish responding status
+                            let event = Event::new(
+                                agent_id.clone(),
+                                "broadcast".to_string(),
+                                EventKind::AgentStatusChange {
+                                    agent_id: agent_id.clone(),
+                                    status: AgentStatus::Responding,
+                                },
+                            );
+                            let _ = event_bus.publish(event);
+
+                            Ok(AgentResponse::StreamingResponse(rx))
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Tool-enabled complete_chat failed: {}", e);
+                        Err(e)
+                    }
+                }
+            } else {
+                // No tools - use streaming as before
+                tracing::info!("Processing message without tools, using stream_chat");
+
+                let (tx, rx) = mpsc::unbounded_channel();
+
+                match llm_adapter.stream_chat(request, tx).await {
+                    Ok(_) => {
+                        // Publish responding status
+                        let event = Event::new(
+                            agent_id.clone(),
+                            "broadcast".to_string(),
+                            EventKind::AgentStatusChange {
+                                agent_id: agent_id.clone(),
+                                status: AgentStatus::Responding,
+                            },
+                        );
+                        let _ = event_bus.publish(event);
+
+                        Ok(AgentResponse::StreamingResponse(rx))
+                    }
+                    Err(e) => {
+                        tracing::error!("stream_chat failed: {}", e);
+                        Err(e)
+                    }
+                }
+            };
+
+            // Handle errors and publish status
+            if let Err(ref e) = result {
+                let event = Event::new(
+                    agent_id.clone(),
+                    "broadcast".to_string(),
+                    EventKind::AgentStatusChange {
+                        agent_id,
+                        status: AgentStatus::Error(e.to_string()),
+                    },
+                );
+                let _ = event_bus.publish(event);
             }
 
-            // Create channel for streaming response
+            let _ = result_tx.send(result);
+        });
+
+        result_rx
+    }
+
+    /// Process a follow-up request with tool results
+    /// Used after tools have been executed to get the final response
+    pub fn process_with_results(
+        &self,
+        messages_with_tool_results: Vec<LlmMessage>,
+    ) -> mpsc::UnboundedReceiver<Result<mpsc::UnboundedReceiver<String>>> {
+        let (result_tx, result_rx) = mpsc::unbounded_channel();
+
+        // Clone everything we need
+        let llm_adapter = Arc::clone(&self.llm_adapter);
+        let web_search_enabled = self.config.web_search_enabled;
+        let runtime = Arc::clone(&self.runtime);
+        let agent_id = self.config.id.clone();
+        let event_bus = Arc::clone(&self.event_bus);
+
+        runtime.spawn(async move {
+            // Create request with the updated message history (includes tool results)
+            let mut request = LlmRequest::new(messages_with_tool_results);
+            request.web_search = Some(web_search_enabled);
+
             let (tx, rx) = mpsc::unbounded_channel();
 
-            // Start streaming
             let result = llm_adapter.stream_chat(request, tx).await;
 
-            // Send result back
             let final_result = match result {
                 Ok(_) => {
-                    // Publish status change
+                    // Publish responding status
                     let event = Event::new(
                         agent_id.clone(),
                         "broadcast".to_string(),
                         EventKind::AgentStatusChange {
-                            agent_id,
+                            agent_id: agent_id.clone(),
                             status: AgentStatus::Responding,
                         },
                     );
@@ -419,6 +551,8 @@ impl Agent {
                     Ok(rx)
                 }
                 Err(e) => {
+                    tracing::error!("stream_chat with tool results failed: {}", e);
+
                     // Publish error status
                     let event = Event::new(
                         agent_id.clone(),
