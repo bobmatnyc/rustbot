@@ -268,6 +268,45 @@ impl RustbotApp {
         input_cost + output_cost
     }
 
+    fn generate_system_context(&self) -> String {
+        // Get current date and time
+        let now = chrono::Local::now();
+        let datetime = now.format("%Y-%m-%d %H:%M:%S %Z").to_string();
+        let day_of_week = now.format("%A").to_string();
+
+        // Get system information
+        let os = std::env::consts::OS;
+        let arch = std::env::consts::ARCH;
+        let hostname = std::env::var("HOSTNAME")
+            .or_else(|_| std::env::var("COMPUTERNAME"))
+            .unwrap_or_else(|_| "unknown".to_string());
+        let user = std::env::var("USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .unwrap_or_else(|_| "unknown".to_string());
+
+        // Build the system context
+        format!(
+            r#"## System Context
+
+**Current Date & Time**: {} ({})
+**LLM Model**: {}
+**Application**: Rustbot v{}
+**Operating System**: {} ({})
+**Hostname**: {}
+**User**: {}
+
+This information is provided automatically to give you context about the current system environment."#,
+            datetime,
+            day_of_week,
+            self.selected_model,
+            version::version_string(),
+            os,
+            arch,
+            hostname,
+            user
+        )
+    }
+
     fn send_message(&mut self, ctx: &egui::Context) {
         if self.message_input.trim().is_empty() || self.is_waiting {
             return;
@@ -292,14 +331,25 @@ impl RustbotApp {
         // Prepare conversation history for API using unified format
         let mut api_messages = Vec::new();
 
-        // Add system prompts as the first message if they exist
-        if !self.system_prompts.system_instructions.is_empty()
-            || !self.system_prompts.personality_instructions.is_empty() {
-            let system_content = format!(
-                "{}\n\n{}",
-                self.system_prompts.system_instructions,
-                self.system_prompts.personality_instructions
-            );
+        // Build complete system message with prompts and context
+        let mut system_parts = Vec::new();
+
+        // Add user-defined system instructions
+        if !self.system_prompts.system_instructions.is_empty() {
+            system_parts.push(self.system_prompts.system_instructions.clone());
+        }
+
+        // Add user-defined personality instructions
+        if !self.system_prompts.personality_instructions.is_empty() {
+            system_parts.push(self.system_prompts.personality_instructions.clone());
+        }
+
+        // Add dynamic system context
+        system_parts.push(self.generate_system_context());
+
+        // Combine all system parts and add as system message
+        if !system_parts.is_empty() {
+            let system_content = system_parts.join("\n\n");
             api_messages.push(LlmMessage {
                 role: "system".to_string(),
                 content: system_content.trim().to_string(),
