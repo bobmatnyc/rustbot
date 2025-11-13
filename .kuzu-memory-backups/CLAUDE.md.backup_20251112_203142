@@ -1,0 +1,45 @@
+# Rustbot - Event-Driven AI Assistant
+
+## What We're Building
+
+Rustbot is a sophisticated AI assistant application built in Rust, featuring:
+- Event-driven architecture with priority-based interrupts
+- Real-time LLM integration with streaming responses
+- Extensible tool/plugin system
+- Lightweight egui-based UI with comprehensive activity visualization
+- Native performance with minimal resource overhead
+
+## Project Documentation
+
+### Design Specifications
+- **Full Architecture Spec**: `docs/design/ARCHITECTURE.md`
+- **Development Plan**: `docs/PRD/development-plan.md`
+
+### Current Phase
+**Phase 1: POC Chatbot**
+- Goal: Basic chatbot with streaming responses
+- LLM Provider: OpenRouter (Claude Sonnet 4.5)
+- Focus: Get core LLM integration working before building event system
+
+### Key Technologies
+- **Language**: Rust (edition 2021)
+- **Async Runtime**: Tokio
+- **UI Framework**: egui/eframe
+- **LLM Provider**: OpenRouter API
+- **HTTP Client**: reqwest with streaming support
+
+## Getting Started
+
+1. Review the architecture specification in `docs/design/ARCHITECTURE.md`
+2. Check current development plan in `docs/PRD/development-plan.md`
+3. Install Rust toolchain: `rustup update stable`
+4. Build: `cargo build`
+5. Run: `cargo run`
+
+## Development Notes
+
+- All shared state uses Arc<RwLock<T>> for thread safety
+- Use structured logging with `tracing` crate
+- Follow Rust naming conventions
+- Prioritize correctness over premature optimization
+- Event-driven design: everything is an event

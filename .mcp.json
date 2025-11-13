@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "kuzu-memory": {
+      "type": "stdio",
+      "command": "/Users/masa/.local/pipx/venvs/kuzu-memory/bin/kuzu-memory",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}
