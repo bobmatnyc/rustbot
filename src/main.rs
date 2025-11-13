@@ -133,19 +133,34 @@ impl RustbotApp {
         // Create LLM adapter
         let llm_adapter: Arc<dyn LlmAdapter> = Arc::from(create_adapter(AdapterType::OpenRouter, api_key.clone()));
 
-        // Create default assistant agent configuration
-        let assistant_config = AgentConfig::default_assistant();
+        // Load agents from JSON preset files using AgentLoader
+        let agent_loader = agent::AgentLoader::new();
+        let mut agent_configs = agent_loader.load_all()
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to load agents from presets: {}", e);
+                vec![]
+            });
 
-        // Build the API using RustbotApiBuilder
-        let api = api::RustbotApiBuilder::new()
+        // If no agents loaded, fall back to default assistant
+        if agent_configs.is_empty() {
+            tracing::info!("No agents loaded from JSON, using default assistant");
+            agent_configs.push(AgentConfig::default_assistant());
+        }
+
+        // Build the API using RustbotApiBuilder with all loaded agents
+        let mut api_builder = api::RustbotApiBuilder::new()
             .event_bus(Arc::clone(&event_bus))
             .runtime(Arc::clone(&runtime))
             .llm_adapter(Arc::clone(&llm_adapter))
             .max_history_size(20)
-            .system_instructions(system_prompts.system_instructions.clone())
-            .add_agent(assistant_config.clone())
-            .build()
-            .expect("Failed to build RustbotApi");
+            .system_instructions(system_prompts.system_instructions.clone());
+
+        // Add all loaded agents
+        for agent_config in &agent_configs {
+            api_builder = api_builder.add_agent(agent_config.clone());
+        }
+
+        let api = api_builder.build().expect("Failed to build RustbotApi");
 
         Self {
             api,
@@ -159,11 +174,11 @@ impl RustbotApp {
             context_tracker: ContextTracker::default(),
             sidebar_open: true, // Start with sidebar open
             current_view: AppView::Chat,
-            settings_view: SettingsView::AiSettings,
+            settings_view: SettingsView::Agents, // Start with Agents view to show loaded agents
             system_prompts,
             selected_model: "Claude Sonnet 4.5".to_string(),
             event_rx,
-            agent_configs: vec![assistant_config],
+            agent_configs: agent_configs.clone(),
             selected_agent_index: None,
             event_history: VecDeque::with_capacity(50),
             show_event_visualizer: true, // Start with visualizer open for debugging

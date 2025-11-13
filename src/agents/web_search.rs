@@ -48,6 +48,7 @@ Format your responses clearly with:
         personality: None,  // No personality for tool agents
         model: "anthropic/claude-3.5-haiku".to_string(),  // Lightweight model for speed
         enabled: true,
+        is_primary: false,  // Specialist agent, not primary
         web_search_enabled: true,
     }
 }

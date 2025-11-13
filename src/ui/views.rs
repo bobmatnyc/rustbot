@@ -440,7 +440,7 @@ impl crate::RustbotApp {
     /// Render the agents management view
     ///
     /// Displays all configured agents and allows:
-    /// - Viewing agent details (name, ID, model)
+    /// - Viewing agent details (name, ID, model, web search capability)
     /// - Setting the active agent
     /// - Editing agent configuration (instructions, personality, model)
     ///
@@ -455,34 +455,57 @@ impl crate::RustbotApp {
                 ui.heading("Agents");
                 ui.add_space(10.0);
 
-                ui.label("Configure AI agents with their own instructions and personality:");
+                ui.label("Manage AI agents with specialized capabilities and instructions:");
                 ui.add_space(15.0);
 
-                // Agent list
+                // Agent list - show in list view
                 ui.label(egui::RichText::new("Available Agents:").strong());
                 ui.add_space(10.0);
 
-                // Display each agent
-                for (index, config) in self.agent_configs.iter().enumerate() {
+                // Display each agent in a compact list format
+                for (index, config) in self.agent_configs.iter_mut().enumerate() {
                     ui.group(|ui| {
                         ui.horizontal(|ui| {
-                            // Agent name and status
-                            let is_active = config.id == self.api.active_agent();
-                            let status_color = if is_active {
-                                egui::Color32::from_rgb(60, 150, 60)
+                            // Agent icon and name
+                            let status_color = if config.is_primary {
+                                egui::Color32::from_rgb(60, 150, 60) // Green for primary
+                            } else if config.enabled {
+                                egui::Color32::from_rgb(100, 150, 200) // Blue for enabled
                             } else {
-                                egui::Color32::from_rgb(100, 100, 100)
+                                egui::Color32::from_rgb(100, 100, 100) // Gray for disabled
+                            };
+
+                            // Icon based on agent type
+                            let icon = if config.is_primary {
+                                format!("{} {}", icons::STAR, config.name)
+                            } else if config.web_search_enabled {
+                                format!("{} {}", icons::MAGNIFYING_GLASS, config.name)
+                            } else {
+                                format!("{} {}", icons::ROBOT, config.name)
                             };
 
                             ui.label(
-                                egui::RichText::new(format!("🤖 {}", config.name))
+                                egui::RichText::new(&icon)
                                     .strong()
                                     .size(16.0),
                             );
 
-                            if is_active {
+                            // Status indicator
+                            if config.is_primary {
                                 ui.label(
-                                    egui::RichText::new("(Active)")
+                                    egui::RichText::new("● Primary")
+                                        .size(12.0)
+                                        .color(status_color),
+                                );
+                            } else if config.enabled {
+                                ui.label(
+                                    egui::RichText::new("✓ Enabled")
+                                        .size(12.0)
+                                        .color(status_color),
+                                );
+                            } else {
+                                ui.label(
+                                    egui::RichText::new("○ Disabled")
                                         .size(12.0)
                                         .color(status_color),
                                 );
@@ -491,24 +514,45 @@ impl crate::RustbotApp {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    // Edit button
-                                    if ui.button("Edit").clicked() {
+                                    // Edit button (for all agents)
+                                    if ui.button(format!("{} Edit", icons::PENCIL_SIMPLE)).clicked() {
                                         self.selected_agent_index = Some(index);
                                     }
 
-                                    // Set Active button
-                                    if !is_active && ui.button("Set Active").clicked() {
-                                        if let Err(e) = self.api.switch_agent(&config.id) {
-                                            tracing::error!("Failed to switch agent: {}", e);
+                                    // Enable/Disable toggle (only for non-primary agents)
+                                    if !config.is_primary {
+                                        let toggle_text = if config.enabled {
+                                            format!("{} Disable", icons::TOGGLE_RIGHT)
+                                        } else {
+                                            format!("{} Enable", icons::TOGGLE_LEFT)
+                                        };
+
+                                        if ui.button(toggle_text).clicked() {
+                                            config.enabled = !config.enabled;
+                                            // TODO: Persist this change and update the agent in the API
                                         }
                                     }
                                 },
                             );
                         });
 
-                        ui.add_space(5.0);
-                        ui.label(format!("ID: {}", config.id));
-                        ui.label(format!("Model: {}", config.model));
+                        ui.add_space(3.0);
+
+                        // Compact info line
+                        ui.horizontal(|ui| {
+                            ui.add_space(20.0); // Indent
+                            let role = if config.is_primary { "Primary" } else { "Specialist" };
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "{} • Model: {} • Web Search: {}",
+                                    role,
+                                    config.model.split('/').last().unwrap_or(&config.model),
+                                    if config.web_search_enabled { "✓" } else { "✗" }
+                                ))
+                                .size(11.0)
+                                .color(egui::Color32::from_rgb(100, 100, 100)),
+                            );
+                        });
                     });
 
                     ui.add_space(10.0);

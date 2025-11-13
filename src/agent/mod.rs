@@ -4,6 +4,7 @@
 // Module Organization:
 // - config.rs: JSON-based agent configuration with multi-provider LLM support
 // - loader.rs: Directory-based agent discovery and loading
+// - tools.rs: Tool definitions for OpenAI-compatible function calling
 // - Core Agent and AgentConfig types defined in this file
 //
 // Design Decision: Hybrid module structure
@@ -15,6 +16,7 @@
 
 pub mod config;
 pub mod loader;
+pub mod tools;
 
 use crate::events::{Event, EventBus, EventKind, AgentStatus};
 use crate::llm::{LlmAdapter, LlmRequest, Message as LlmMessage};
@@ -29,6 +31,7 @@ pub use config::{
     AgentCapabilities, AgentMetadata, JsonAgentConfig, ModelParameters,
 };
 pub use loader::AgentLoader;
+pub use tools::{FunctionDefinition, FunctionParameters, ToolDefinition};
 
 /// Runtime configuration for an agent
 ///
@@ -39,6 +42,10 @@ pub use loader::AgentLoader;
 ///
 /// Design: Separate from JsonAgentConfig to maintain backward compatibility
 /// and allow runtime-optimized structure (e.g., pre-built system prompts).
+///
+/// Agent Types:
+/// - Primary Agent (is_primary = true): Always active, handles all user messages
+/// - Specialist Agent (is_primary = false): Callable by primary agent when enabled
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     /// Unique identifier for this agent
@@ -56,8 +63,13 @@ pub struct AgentConfig {
     /// LLM model to use for this agent
     pub model: String,
 
-    /// Whether this agent is currently enabled
+    /// Whether this agent is currently enabled (can be called by primary agent)
     pub enabled: bool,
+
+    /// Whether this is the primary agent (handles user messages directly)
+    /// Primary agent is always active. Non-primary agents are callable tools.
+    #[serde(default)]
+    pub is_primary: bool,
 
     /// Whether this agent has web search capabilities enabled
     #[serde(default)]
@@ -74,6 +86,7 @@ impl AgentConfig {
             personality: None,
             model: "anthropic/claude-sonnet-4.5".to_string(),
             enabled: true,
+            is_primary: false,  // Default to specialist agent
             web_search_enabled: false,
         }
     }
@@ -87,6 +100,7 @@ impl AgentConfig {
             personality: Some("Be concise, friendly, and professional.".to_string()),
             model: "anthropic/claude-sonnet-4.5".to_string(),
             enabled: true,
+            is_primary: true,  // Assistant is the primary agent
             web_search_enabled: false,
         }
     }

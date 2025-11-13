@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::agent::ToolDefinition;
 
 /// Type of LLM adapter to use
 #[derive(Debug, Clone, Copy)]
@@ -53,8 +54,18 @@ pub struct LlmRequest {
     pub model: Option<String>, // Override default model
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
-    pub tools: Option<Vec<Tool>>, // For function calling
-    pub web_search: Option<bool>, // Enable web search capabilities
+
+    /// Tools available for function calling (OpenAI format)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<ToolDefinition>>,
+
+    /// Tool choice parameter: "auto", "none", "required", or specific tool
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<String>,
+
+    /// Enable web search capabilities (OpenRouter-specific)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub web_search: Option<bool>,
 }
 
 impl LlmRequest {
@@ -65,6 +76,7 @@ impl LlmRequest {
             temperature: None,
             max_tokens: None,
             tools: None,
+            tool_choice: None,
             web_search: None,
         }
     }
@@ -74,8 +86,13 @@ impl LlmRequest {
         self
     }
 
-    pub fn with_tools(mut self, tools: Vec<Tool>) -> Self {
+    pub fn with_tools(mut self, tools: Vec<ToolDefinition>) -> Self {
         self.tools = Some(tools);
+        self
+    }
+
+    pub fn with_tool_choice(mut self, choice: String) -> Self {
+        self.tool_choice = Some(choice);
         self
     }
 
@@ -98,14 +115,6 @@ pub struct LlmResponse {
 pub struct Message {
     pub role: String, // "user", "assistant", "system"
     pub content: String,
-}
-
-/// Tool definition for function calling
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Tool {
-    pub name: String,
-    pub description: String,
-    pub parameters: serde_json::Value, // JSON Schema
 }
 
 /// A tool call requested by the LLM

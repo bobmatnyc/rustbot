@@ -186,6 +186,7 @@ impl AgentLoader {
             personality: json.personality,
             model: json.model,
             enabled: json.enabled,
+            is_primary: json.is_primary,
             web_search_enabled: json.capabilities.web_search,
         })
     }

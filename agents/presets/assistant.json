@@ -16,6 +16,7 @@
     "streaming": true
   },
   "enabled": true,
+  "isPrimary": true,
   "metadata": {
     "author": "Rustbot",
     "version": "1.0.0",

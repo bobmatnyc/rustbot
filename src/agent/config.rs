@@ -68,6 +68,11 @@ pub struct JsonAgentConfig {
     #[serde(default = "default_enabled")]
     pub enabled: bool,
 
+    /// Whether this is the primary agent (handles user messages directly)
+    #[serde(rename = "isPrimary")]
+    #[serde(default)]
+    pub is_primary: bool,
+
     /// Optional metadata (author, tags, version, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<AgentMetadata>,

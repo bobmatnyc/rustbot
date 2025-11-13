@@ -2,7 +2,7 @@
 // This provides the core interface that both UI and external code can use
 // Design principle: All functionality accessible programmatically
 
-use crate::agent::{Agent, AgentConfig};
+use crate::agent::{Agent, AgentConfig, ToolDefinition};
 use crate::events::{Event, EventBus, EventKind, AgentStatus};
 use crate::llm::{Message as LlmMessage, LlmAdapter};
 use anyhow::{Result, Context as AnyhowContext};
@@ -22,6 +22,13 @@ pub struct RustbotApi {
 
     /// Registered agents
     agents: Vec<Agent>,
+
+    /// Agent configurations (needed for building tool registry)
+    agent_configs: Vec<AgentConfig>,
+
+    /// Tool definitions for enabled specialist agents
+    /// These are automatically built from agent_configs
+    available_tools: Vec<ToolDefinition>,
 
     /// Currently active agent ID
     active_agent_id: String,
@@ -44,10 +51,33 @@ impl RustbotApi {
             event_bus,
             runtime,
             agents: Vec::new(),
+            agent_configs: Vec::new(),
+            available_tools: Vec::new(),
             active_agent_id: String::from("assistant"),
             message_history: VecDeque::new(),
             max_history_size,
         }
+    }
+
+    /// Build tool definitions from all enabled specialist agents
+    /// This should be called whenever agent configs change (enable/disable)
+    fn build_tool_definitions(&self) -> Vec<ToolDefinition> {
+        ToolDefinition::from_agents(&self.agent_configs)
+    }
+
+    /// Update the tool registry
+    /// Call this when agents are enabled/disabled to rebuild the available tools
+    pub fn update_tools(&mut self) {
+        self.available_tools = self.build_tool_definitions();
+        tracing::debug!(
+            "Tool registry updated: {} tools available",
+            self.available_tools.len()
+        );
+    }
+
+    /// Get the current list of available tools
+    pub fn available_tools(&self) -> &[ToolDefinition] {
+        &self.available_tools
     }
 
     /// Register an agent with the system
@@ -292,6 +322,9 @@ impl RustbotApiBuilder {
             self.max_history_size,
         );
 
+        // Store agent configs for tool registry
+        api.agent_configs = self.agent_configs.clone();
+
         // Create agents from configs
         for config in self.agent_configs {
             let agent = Agent::new(
@@ -303,6 +336,9 @@ impl RustbotApiBuilder {
             );
             api.register_agent(agent);
         }
+
+        // Build initial tool registry from enabled specialist agents
+        api.update_tools();
 
         Ok(api)
     }
