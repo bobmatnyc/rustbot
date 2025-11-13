@@ -1,5 +1,6 @@
 use super::types::*;
 use super::LlmAdapter;
+use crate::agent::ToolDefinition;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -42,18 +43,14 @@ impl LlmAdapter for OpenRouterAdapter {
         request: LlmRequest,
         tx: mpsc::UnboundedSender<String>,
     ) -> Result<()> {
-        // Prepare web search tools if enabled
-        let (tools, provider) = if request.web_search == Some(true) {
-            (
-                Some(vec![WebSearchTool {
-                    tool_type: "web_search".to_string(),
-                }]),
-                Some(ProviderConfig {
-                    allow_fallbacks: Some(false),
-                }),
-            )
+        // Handle web search if enabled (OpenRouter-specific feature)
+        let provider = if request.web_search == Some(true) {
+            Some(ProviderConfig {
+                allow_fallbacks: Some(false),
+                // TODO: Add web_search tool to provider config
+            })
         } else {
-            (None, None)
+            None
         };
 
         let api_request = ApiRequest {
@@ -62,7 +59,8 @@ impl LlmAdapter for OpenRouterAdapter {
             stream: true,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
-            tools,
+            tools: request.tools,  // Pass custom tools from request
+            tool_choice: request.tool_choice,  // Pass tool_choice from request
             provider,
         };
 
@@ -133,18 +131,13 @@ impl LlmAdapter for OpenRouterAdapter {
     }
 
     async fn complete_chat(&self, request: LlmRequest) -> Result<LlmResponse> {
-        // Prepare web search tools if enabled
-        let (tools, provider) = if request.web_search == Some(true) {
-            (
-                Some(vec![WebSearchTool {
-                    tool_type: "web_search".to_string(),
-                }]),
-                Some(ProviderConfig {
-                    allow_fallbacks: Some(false),
-                }),
-            )
+        // Handle web search if enabled (OpenRouter-specific feature)
+        let provider = if request.web_search == Some(true) {
+            Some(ProviderConfig {
+                allow_fallbacks: Some(false),
+            })
         } else {
-            (None, None)
+            None
         };
 
         let api_request = ApiRequest {
@@ -153,7 +146,8 @@ impl LlmAdapter for OpenRouterAdapter {
             stream: false,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
-            tools,
+            tools: request.tools,  // Pass custom tools from request
+            tool_choice: request.tool_choice,  // Pass tool_choice from request
             provider,
         };
 
@@ -172,9 +166,12 @@ impl LlmAdapter for OpenRouterAdapter {
             .first()
             .context("No choices in response")?;
 
+        // Parse tool calls from message if present
+        let tool_calls = choice.message.tool_calls.clone();
+
         Ok(LlmResponse {
             content: choice.message.content.clone(),
-            tool_calls: None, // OpenRouter doesn't support tool calls yet
+            tool_calls,
             finish_reason: choice.finish_reason.clone(),
         })
     }
@@ -194,8 +191,16 @@ struct ApiRequest {
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
+
+    /// Custom tool definitions (OpenAI function calling format)
     #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<Vec<WebSearchTool>>,
+    tools: Option<Vec<ToolDefinition>>,
+
+    /// Tool choice parameter
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<String>,
+
+    /// Provider-specific configuration (e.g., for web_search)
     #[serde(skip_serializing_if = "Option::is_none")]
     provider: Option<ProviderConfig>,
 }
