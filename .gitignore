@@ -19,6 +19,7 @@ config.local.toml
 
 # Application data
 rustbot_stats.json
+rustbot_prompts.json
 
 # Logs
 *.log

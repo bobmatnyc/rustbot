@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use egui_phosphor::regular as icons;
 
 fn main() -> Result<(), eframe::Error> {
     // Initialize tracing for logging
@@ -43,6 +44,38 @@ struct RustbotApp {
     runtime: tokio::runtime::Runtime,
     spinner_rotation: f32,
     token_stats: TokenStats,
+    sidebar_open: bool,
+    current_view: AppView,
+    settings_view: SettingsView,
+    system_prompts: SystemPrompts,
+    selected_model: String,
+}
+
+#[derive(PartialEq)]
+enum AppView {
+    Chat,
+    Settings,
+}
+
+#[derive(PartialEq, Clone)]
+enum SettingsView {
+    AiSettings,
+    SystemPrompts,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct SystemPrompts {
+    system_instructions: String,
+    personality_instructions: String,
+}
+
+impl Default for SystemPrompts {
+    fn default() -> Self {
+        Self {
+            system_instructions: "You are a helpful AI assistant.".to_string(),
+            personality_instructions: "Be concise, friendly, and professional.".to_string(),
+        }
+    }
 }
 
 struct ChatMessage {
@@ -70,6 +103,7 @@ enum MessageRole {
 impl RustbotApp {
     fn new(api_key: String) -> Self {
         let token_stats = Self::load_token_stats().unwrap_or_default();
+        let system_prompts = Self::load_system_prompts().unwrap_or_default();
 
         Self {
             message_input: String::new(),
@@ -81,7 +115,33 @@ impl RustbotApp {
             runtime: tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime"),
             spinner_rotation: 0.0,
             token_stats: Self::check_and_reset_daily_stats(token_stats),
+            sidebar_open: true, // Start with sidebar open
+            current_view: AppView::Chat,
+            settings_view: SettingsView::AiSettings,
+            system_prompts,
+            selected_model: "Claude Sonnet 4".to_string(),
         }
+    }
+
+    fn load_system_prompts() -> Result<SystemPrompts, Box<dyn std::error::Error>> {
+        let mut path = PathBuf::from(".");
+        path.push("rustbot_prompts.json");
+
+        if !path.exists() {
+            return Ok(SystemPrompts::default());
+        }
+
+        let content = std::fs::read_to_string(path)?;
+        let prompts: SystemPrompts = serde_json::from_str(&content)?;
+        Ok(prompts)
+    }
+
+    fn save_system_prompts(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut path = PathBuf::from(".");
+        path.push("rustbot_prompts.json");
+        let content = serde_json::to_string_pretty(&self.system_prompts)?;
+        std::fs::write(path, content)?;
+        Ok(())
     }
 
     fn get_stats_file_path() -> PathBuf {
@@ -161,6 +221,21 @@ impl RustbotApp {
 
         // Prepare conversation history for API using unified format
         let mut api_messages = Vec::new();
+
+        // Add system prompts as the first message if they exist
+        if !self.system_prompts.system_instructions.is_empty()
+            || !self.system_prompts.personality_instructions.is_empty() {
+            let system_content = format!(
+                "{}\n\n{}",
+                self.system_prompts.system_instructions,
+                self.system_prompts.personality_instructions
+            );
+            api_messages.push(LlmMessage {
+                role: "system".to_string(),
+                content: system_content.trim().to_string(),
+            });
+        }
+
         for msg in &self.messages {
             api_messages.push(LlmMessage {
                 role: match msg.role {
@@ -200,79 +275,14 @@ impl RustbotApp {
 
         self.message_input.clear();
     }
-}
 
-impl eframe::App for RustbotApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Update spinner rotation when waiting
-        if self.is_waiting {
-            self.spinner_rotation += 0.1;
-            ctx.request_repaint();
-        }
+    fn render_chat_view(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        // Calculate available height for messages
+        let input_area_height = 60.0;
+        let available_height = ui.available_height() - input_area_height;
 
-        // Check for streaming responses
-        if let Some(rx) = &mut self.response_rx {
-            while let Ok(chunk) = rx.try_recv() {
-                self.current_response.push_str(&chunk);
-
-                // Update the last message (assistant response)
-                if let Some(last_msg) = self.messages.last_mut() {
-                    last_msg.content = self.current_response.clone();
-                }
-
-                ctx.request_repaint(); // Request repaint for each chunk
-            }
-
-            // Check if stream is done
-            if rx.is_closed() && !self.current_response.is_empty() {
-                // Calculate output tokens for the completed response
-                let output_tokens = self.estimate_tokens(&self.current_response);
-                self.token_stats.daily_output += output_tokens;
-                self.token_stats.total_output += output_tokens;
-
-                // Save stats after updating
-                let _ = self.save_token_stats();
-
-                // Update the last message with token count
-                if let Some(last_msg) = self.messages.last_mut() {
-                    last_msg.output_tokens = Some(output_tokens);
-                }
-
-                self.response_rx = None;
-                self.current_response.clear();
-                self.is_waiting = false;
-            }
-        }
-
-        // Set larger default font sizes
-        let mut style = (*ctx.style()).clone();
-        style.text_styles = [
-            (egui::TextStyle::Heading, egui::FontId::new(24.0, egui::FontFamily::Proportional)),
-            (egui::TextStyle::Body, egui::FontId::new(16.0, egui::FontFamily::Proportional)),
-            (egui::TextStyle::Button, egui::FontId::new(16.0, egui::FontFamily::Proportional)),
-            (egui::TextStyle::Small, egui::FontId::new(14.0, egui::FontFamily::Proportional)),
-            (egui::TextStyle::Monospace, egui::FontId::new(14.0, egui::FontFamily::Proportional)),
-        ].into();
-        ctx.set_style(style);
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.vertical(|ui| {
-                // Header at top with version info
-                ui.horizontal(|ui| {
-                    ui.heading("Rustbot - AI Assistant");
-                    ui.add_space(10.0);
-                    ui.label(egui::RichText::new(version::version_string())
-                        .size(14.0)
-                        .color(egui::Color32::from_rgb(120, 120, 120)));
-                });
-                ui.separator();
-
-                // Calculate available height for messages
-                let input_area_height = 60.0;
-                let available_height = ui.available_height() - input_area_height;
-
-                // Scrollable message area
-                egui::ScrollArea::vertical()
+        // Scrollable message area
+        egui::ScrollArea::vertical()
                     .max_height(available_height)
                     .stick_to_bottom(true)
                     .auto_shrink([false; 2])
@@ -286,8 +296,8 @@ impl eframe::App for RustbotApp {
                         } else {
                             for msg in &self.messages {
                                 let (label, color) = match msg.role {
-                                    MessageRole::User => ("You", egui::Color32::from_rgb(60, 120, 220)),
-                                    MessageRole::Assistant => ("Assistant", egui::Color32::from_rgb(80, 180, 80)),
+                                    MessageRole::User => ("You", egui::Color32::from_rgb(45, 100, 200)),
+                                    MessageRole::Assistant => ("Assistant", egui::Color32::from_rgb(60, 150, 60)),
                                 };
 
                                 // Message header
@@ -337,7 +347,7 @@ impl eframe::App for RustbotApp {
                                             ui.set_max_width(available_width);
                                             ui.label(
                                                 egui::RichText::new(&msg.content)
-                                                    .color(egui::Color32::from_rgb(30, 30, 30))
+                                                    .color(egui::Color32::from_rgb(40, 40, 40))
                                             );
                                         });
                                     });
@@ -382,7 +392,8 @@ impl eframe::App for RustbotApp {
                     );
 
                     ui.label(egui::RichText::new(format!(
-                        "📊 Daily: {}↑ {}↓ (${:.4})  •  Total: {}↑ {}↓ (${:.4})",
+                        "{} Daily: {}↑ {}↓ (${:.4})  •  Total: {}↑ {}↓ (${:.4})",
+                        icons::CHART_LINE,
                         self.token_stats.daily_input,
                         self.token_stats.daily_output,
                         daily_cost,
@@ -393,6 +404,250 @@ impl eframe::App for RustbotApp {
                     .size(11.0)
                     .color(egui::Color32::from_rgb(120, 120, 120)));
                 });
+    }
+
+    fn render_settings_view(&mut self, ui: &mut egui::Ui) {
+        // Secondary navigation bar under header
+        ui.horizontal(|ui| {
+            let ai_settings_button = ui.add(
+                egui::SelectableLabel::new(
+                    self.settings_view == SettingsView::AiSettings,
+                    "AI Settings"
+                )
+            );
+            if ai_settings_button.clicked() {
+                self.settings_view = SettingsView::AiSettings;
+            }
+
+            ui.add_space(10.0);
+
+            let system_prompts_button = ui.add(
+                egui::SelectableLabel::new(
+                    self.settings_view == SettingsView::SystemPrompts,
+                    "System Prompts"
+                )
+            );
+            if system_prompts_button.clicked() {
+                self.settings_view = SettingsView::SystemPrompts;
+            }
+        });
+        ui.separator();
+
+        // Render content based on selected settings view
+        match self.settings_view {
+            SettingsView::AiSettings => self.render_ai_settings(ui),
+            SettingsView::SystemPrompts => self.render_system_prompts(ui),
+        }
+    }
+
+    fn render_ai_settings(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(20.0);
+        ui.heading("AI Model Selection");
+        ui.add_space(10.0);
+
+        ui.horizontal(|ui| {
+            ui.label("Select LLM Model:");
+            egui::ComboBox::from_id_salt("model_selector")
+                .selected_text(&self.selected_model)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.selected_model, "Claude Sonnet 4".to_string(), "Claude Sonnet 4");
+                    ui.selectable_value(&mut self.selected_model, "Claude Opus 4".to_string(), "Claude Opus 4");
+                    ui.selectable_value(&mut self.selected_model, "GPT-4".to_string(), "GPT-4");
+                });
+        });
+
+        ui.add_space(20.0);
+        ui.label(egui::RichText::new(format!("Currently using: {}", self.selected_model))
+            .color(egui::Color32::from_rgb(80, 80, 80)));
+    }
+
+    fn render_system_prompts(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(20.0);
+        ui.heading("System Prompts");
+        ui.add_space(10.0);
+
+        ui.label("These instructions are sent with every chat session:");
+        ui.add_space(10.0);
+
+        // System Instructions
+        ui.label(egui::RichText::new("System Instructions:").strong());
+        ui.add_space(5.0);
+        let system_instructions_response = ui.add_sized(
+            [ui.available_width(), 150.0],
+            egui::TextEdit::multiline(&mut self.system_prompts.system_instructions)
+                .hint_text("Enter system instructions for the AI...")
+        );
+
+        ui.add_space(15.0);
+
+        // Personality Instructions
+        ui.label(egui::RichText::new("Personality Instructions:").strong());
+        ui.add_space(5.0);
+        let personality_response = ui.add_sized(
+            [ui.available_width(), 150.0],
+            egui::TextEdit::multiline(&mut self.system_prompts.personality_instructions)
+                .hint_text("Enter personality instructions for the AI...")
+        );
+
+        ui.add_space(15.0);
+
+        // Save button
+        if ui.button("Save Prompts").clicked() {
+            if let Err(e) = self.save_system_prompts() {
+                tracing::error!("Failed to save system prompts: {}", e);
+            }
+        }
+
+        // Show if any changes were detected
+        if system_instructions_response.changed() || personality_response.changed() {
+            ui.add_space(5.0);
+            ui.label(egui::RichText::new("* Unsaved changes")
+                .size(12.0)
+                .color(egui::Color32::from_rgb(220, 100, 60)));
+        }
+    }
+}
+
+impl eframe::App for RustbotApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Update spinner rotation when waiting
+        if self.is_waiting {
+            self.spinner_rotation += 0.1;
+            ctx.request_repaint();
+        }
+
+        // Check for streaming responses
+        if let Some(rx) = &mut self.response_rx {
+            while let Ok(chunk) = rx.try_recv() {
+                self.current_response.push_str(&chunk);
+
+                // Update the last message (assistant response)
+                if let Some(last_msg) = self.messages.last_mut() {
+                    last_msg.content = self.current_response.clone();
+                }
+
+                ctx.request_repaint(); // Request repaint for each chunk
+            }
+
+            // Check if stream is done
+            if rx.is_closed() && !self.current_response.is_empty() {
+                // Calculate output tokens for the completed response
+                let output_tokens = self.estimate_tokens(&self.current_response);
+                self.token_stats.daily_output += output_tokens;
+                self.token_stats.total_output += output_tokens;
+
+                // Save stats after updating
+                let _ = self.save_token_stats();
+
+                // Update the last message with token count
+                if let Some(last_msg) = self.messages.last_mut() {
+                    last_msg.output_tokens = Some(output_tokens);
+                }
+
+                self.response_rx = None;
+                self.current_response.clear();
+                self.is_waiting = false;
+            }
+        }
+
+        // Set custom theme with larger fonts
+        let mut style = (*ctx.style()).clone();
+        style.text_styles = [
+            (egui::TextStyle::Heading, egui::FontId::new(24.0, egui::FontFamily::Proportional)),
+            (egui::TextStyle::Body, egui::FontId::new(16.0, egui::FontFamily::Proportional)),
+            (egui::TextStyle::Button, egui::FontId::new(16.0, egui::FontFamily::Proportional)),
+            (egui::TextStyle::Small, egui::FontId::new(14.0, egui::FontFamily::Proportional)),
+            (egui::TextStyle::Monospace, egui::FontId::new(14.0, egui::FontFamily::Proportional)),
+        ].into();
+
+        // Custom light color scheme
+        let mut visuals = egui::Visuals::light();
+        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(245, 245, 247);
+        visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(240, 240, 242);
+        visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(230, 230, 235);
+        visuals.widgets.active.bg_fill = egui::Color32::from_rgb(60, 120, 220);
+        visuals.selection.bg_fill = egui::Color32::from_rgba_premultiplied(60, 120, 220, 80);
+        visuals.extreme_bg_color = egui::Color32::from_rgb(250, 250, 252);
+        visuals.panel_fill = egui::Color32::from_rgb(248, 248, 250);
+        visuals.window_fill = egui::Color32::from_rgb(255, 255, 255);
+
+        style.visuals = visuals;
+        ctx.set_style(style);
+
+        // Sidebar panel
+        if self.sidebar_open {
+            egui::SidePanel::left("sidebar")
+                .resizable(false)
+                .default_width(200.0)
+                .show(ctx, |ui| {
+                    ui.vertical(|ui| {
+                        // Sidebar header with toggle
+                        ui.horizontal(|ui| {
+                            ui.heading("Menu");
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.button(icons::CARET_LEFT).clicked() {
+                                    self.sidebar_open = false;
+                                }
+                            });
+                        });
+                        ui.separator();
+
+                        // Menu items (left-justified)
+                        ui.add_space(10.0);
+
+                        ui.horizontal(|ui| {
+                            let chat_button = ui.add(
+                                egui::SelectableLabel::new(
+                                    self.current_view == AppView::Chat,
+                                    format!("{} Chat", icons::CHATS_CIRCLE)
+                                )
+                            );
+                            if chat_button.clicked() {
+                                self.current_view = AppView::Chat;
+                            }
+                        });
+
+                        ui.add_space(5.0);
+
+                        ui.horizontal(|ui| {
+                            let settings_button = ui.add(
+                                egui::SelectableLabel::new(
+                                    self.current_view == AppView::Settings,
+                                    format!("{} Settings", icons::GEAR)
+                                )
+                            );
+                            if settings_button.clicked() {
+                                self.current_view = AppView::Settings;
+                            }
+                        });
+                    });
+                });
+        }
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical(|ui| {
+                // Header at top with toggle button and version info
+                ui.horizontal(|ui| {
+                    // Sidebar toggle button (hamburger menu)
+                    if !self.sidebar_open {
+                        if ui.button(icons::LIST).clicked() {
+                            self.sidebar_open = true;
+                        }
+                    }
+
+                    ui.heading("Rustbot - AI Assistant");
+                    ui.add_space(10.0);
+                    ui.label(egui::RichText::new(version::version_string())
+                        .size(14.0)
+                        .color(egui::Color32::from_rgb(120, 120, 120)));
+                });
+                ui.separator();
+
+                // Render different views based on current_view
+                match self.current_view {
+                    AppView::Chat => self.render_chat_view(ui, ctx),
+                    AppView::Settings => self.render_settings_view(ui),
+                }
             });
         });
     }
