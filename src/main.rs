@@ -761,23 +761,30 @@ This information is provided automatically to give you context about the current
                     ui.add_space(5.0);
                 }
 
-                // Input area pinned at bottom
+                // Add spacing before input area
+                ui.add_space(15.0);
+
+                // Input area with multi-line text box
                 ui.horizontal(|ui| {
                     let text_edit_width = ui.available_width() - 70.0;
                     let response = ui.add_sized(
-                        [text_edit_width, 30.0],
-                        egui::TextEdit::singleline(&mut self.message_input)
-                            .hint_text("Type your message here...")
+                        [text_edit_width, 80.0],
+                        egui::TextEdit::multiline(&mut self.message_input)
+                            .hint_text("Type your message here...\n\nPress Cmd+Enter to send")
                             .desired_width(text_edit_width),
                     );
 
                     let send_button = ui.add_sized(
-                        [60.0, 30.0],
+                        [60.0, 80.0],
                         egui::Button::new(if self.is_waiting { "..." } else { "Send" })
                     );
 
-                    if (send_button.clicked() || (response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
-                        && !self.is_waiting {
+                    // Send on Cmd+Enter or button click
+                    let cmd_enter = ui.input(|i| {
+                        i.key_pressed(egui::Key::Enter) && (i.modifiers.command || i.modifiers.ctrl)
+                    });
+
+                    if (send_button.clicked() || cmd_enter) && !self.is_waiting {
                         self.send_message(ctx);
                     }
                 });
