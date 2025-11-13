@@ -124,10 +124,10 @@ impl RustbotApi {
     /// Send a user message and get a streaming response
     /// This is the programmatic equivalent of typing a message in the UI
     /// Returns a channel that will stream the agent's response chunks
-    pub fn send_message(
+    pub async fn send_message(
         &mut self,
         message: &str,
-    ) -> Result<mpsc::UnboundedReceiver<Result<mpsc::UnboundedReceiver<String>>>> {
+    ) -> Result<mpsc::UnboundedReceiver<String>> {
         // Get context messages (last N messages) - WITHOUT adding current message yet
         // The agent will receive the current message separately and add it to context
         let context_messages: Vec<LlmMessage> = self.message_history
@@ -185,20 +185,25 @@ impl RustbotApi {
         }
 
         // Wait for the agent response and handle tool execution if needed
-        let agent_response = self.runtime.block_on(async {
-            result_rx.recv().await
-                .context("No response from agent")?
-        })?;
+        let agent_response_result = result_rx.recv().await
+            .context("No response from agent")?;
 
-        match agent_response {
-            AgentResponse::StreamingResponse(stream) => {
-                // No tools needed - return stream directly wrapped in Result
-                let (tx, rx) = mpsc::unbounded_channel();
-                let _ = tx.send(Ok(stream));
-                Ok(rx)
+        match agent_response_result {
+            Ok(AgentResponse::StreamingResponse(stream)) => {
+                // No tools needed - return stream directly
+                Ok(stream)
             }
-            AgentResponse::NeedsToolExecution { tool_calls, mut messages } => {
+            Ok(AgentResponse::NeedsToolExecution { tool_calls, mut messages }) => {
                 tracing::info!("Tool execution required: {} tools to execute", tool_calls.len());
+
+                // CRITICAL FIX: Add the assistant message with tool calls to conversation history
+                // The messages array from the agent includes: [...context, user_msg, assistant_with_tool_calls]
+                // We need to add the assistant message to our history BEFORE adding tool results
+                if let Some(assistant_msg) = messages.iter().rev().find(|m| m.role == "assistant") {
+                    tracing::debug!("Adding assistant message with {} tool calls to conversation history",
+                        assistant_msg.tool_calls.as_ref().map(|tc| tc.len()).unwrap_or(0));
+                    self.message_history.push_back(assistant_msg.clone());
+                }
 
                 // Execute each tool call sequentially
                 for tool_call in tool_calls {
@@ -206,17 +211,16 @@ impl RustbotApi {
 
                     // Execute the tool (delegates to specialist agent)
                     let args_str = tool_call.arguments.to_string();
-                    let result = self.runtime.block_on(async {
-                        self.execute_tool(&tool_call.name, &args_str).await
-                    })?;
+                    let result = self.execute_tool(&tool_call.name, &args_str).await?;
 
                     tracing::info!("Tool {} completed, result length: {} chars", tool_call.name, result.len());
 
-                    // Add tool result to message history
-                    messages.push(LlmMessage::tool_result(tool_call.id.clone(), result));
+                    // Add tool result to messages array for current request
+                    messages.push(LlmMessage::tool_result(tool_call.id.clone(), result.clone()));
 
-                    // Also add to our conversation history for context
-                    self.message_history.push_back(LlmMessage::tool_result(tool_call.id, "Tool executed".to_string()));
+                    // CRITICAL FIX: Add actual tool result content to conversation history
+                    // (Previously stored placeholder "Tool executed", now stores actual result for better context)
+                    self.message_history.push_back(LlmMessage::tool_result(tool_call.id, result));
                 }
 
                 // Make follow-up request with tool results to get final response
@@ -224,46 +228,72 @@ impl RustbotApi {
                 let mut final_result_rx = agent.process_with_results(messages);
 
                 // Wait for the final streaming response
-                let final_stream = self.runtime.block_on(async {
-                    match final_result_rx.recv().await {
-                        Some(Ok(stream)) => Ok(stream),
-                        Some(Err(e)) => Err(e),
-                        None => anyhow::bail!("No final response from agent"),
-                    }
-                })?;
+                let final_stream = match final_result_rx.recv().await {
+                    Some(Ok(stream)) => Ok(stream),
+                    Some(Err(e)) => Err(e),
+                    None => anyhow::bail!("No final response from agent"),
+                }?;
 
-                // Return the final stream wrapped in Result
-                let (tx, rx) = mpsc::unbounded_channel();
-                let _ = tx.send(Ok(final_stream));
-                Ok(rx)
+                // Return the final stream
+                Ok(final_stream)
+            }
+            Err(e) => {
+                // Error occurred during agent processing
+                Err(e)
             }
         }
     }
 
     /// Send a message and wait for complete response (blocking)
     /// This is useful for scripting scenarios where you want the full response
+    /// NOTE: This method is deprecated and may be removed in a future version.
+    /// Use send_message() with proper async handling instead.
+    #[deprecated(note = "Use async send_message() instead to avoid nested runtime issues")]
     pub fn send_message_blocking(&mut self, message: &str) -> Result<String> {
-        let mut result_rx = self.send_message(message)?;
+        // This is a simplified blocking version that doesn't support tool execution
+        // For full functionality with tool support, use the async send_message() method
 
-        // Block until we get the result
-        let stream_rx = self.runtime.block_on(async {
+        let context_messages: Vec<LlmMessage> = self.message_history
+            .iter()
+            .take(self.max_history_size)
+            .cloned()
+            .collect();
+
+        let agent = self.agents
+            .iter()
+            .find(|a| a.id() == self.active_agent_id)
+            .context("Active agent not found")?;
+
+        let mut result_rx = agent.process_message_nonblocking(
+            message.to_string(),
+            context_messages,
+            None, // No tools in blocking mode to keep it simple
+        );
+
+        self.message_history.push_back(LlmMessage::new("user", message));
+
+        while self.message_history.len() > self.max_history_size {
+            self.message_history.pop_front();
+        }
+
+        let mut stream_rx = self.runtime.block_on(async {
             match result_rx.recv().await {
-                Some(Ok(rx)) => Ok(rx),
+                Some(Ok(AgentResponse::StreamingResponse(stream))) => Ok(stream),
+                Some(Ok(AgentResponse::NeedsToolExecution { .. })) => {
+                    anyhow::bail!("Tool execution not supported in blocking mode")
+                }
                 Some(Err(e)) => Err(e),
                 None => anyhow::bail!("No response received"),
             }
         })?;
 
-        // Collect all chunks into full response
         let mut full_response = String::new();
         self.runtime.block_on(async {
-            let mut rx = stream_rx;
-            while let Some(chunk) = rx.recv().await {
+            while let Some(chunk) = stream_rx.recv().await {
                 full_response.push_str(&chunk);
             }
         });
 
-        // Add assistant response to history
         self.message_history.push_back(LlmMessage::new("assistant", full_response.clone()));
 
         Ok(full_response)
@@ -340,33 +370,27 @@ impl ToolExecutor for RustbotApi {
         let prompt = format!("Execute with arguments: {}", arguments);
 
         // Execute the specialist agent with no context and no tools
-        let result_rx = specialist_agent.process_message_nonblocking(
+        let mut result_rx = specialist_agent.process_message_nonblocking(
             prompt,
             vec![],  // No conversation context for tool execution
             None,    // Specialist agents don't get tools
         );
 
-        // Block and collect the result
-        let stream_rx = self.runtime.block_on(async {
-            let mut rx = result_rx;
-            match rx.recv().await {
-                Some(Ok(AgentResponse::StreamingResponse(stream))) => Ok(stream),
-                Some(Ok(AgentResponse::NeedsToolExecution { .. })) => {
-                    anyhow::bail!("Unexpected: Specialist agent requested tool execution")
-                }
-                Some(Err(e)) => Err(e),
-                None => anyhow::bail!("No response from specialist agent"),
+        // Await and collect the result
+        let mut stream_rx = match result_rx.recv().await {
+            Some(Ok(AgentResponse::StreamingResponse(stream))) => Ok(stream),
+            Some(Ok(AgentResponse::NeedsToolExecution { .. })) => {
+                anyhow::bail!("Unexpected: Specialist agent requested tool execution")
             }
-        })?;
+            Some(Err(e)) => Err(e),
+            None => anyhow::bail!("No response from specialist agent"),
+        }?;
 
         // Collect all chunks into result
         let mut result = String::new();
-        self.runtime.block_on(async {
-            let mut rx = stream_rx;
-            while let Some(chunk) = rx.recv().await {
-                result.push_str(&chunk);
-            }
-        });
+        while let Some(chunk) = stream_rx.recv().await {
+            result.push_str(&chunk);
+        }
 
         tracing::info!("Tool execution result: {}", result);
         Ok(result)
