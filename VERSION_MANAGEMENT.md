@@ -14,7 +14,7 @@ Example: `v0.0.1-0001`
 
 ## Current Version
 
-- **Version**: 0.0.1
+- **Version**: 0.0.2
 - **Build**: 0001
 
 ## Updating Versions
