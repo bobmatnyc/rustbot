@@ -140,10 +140,37 @@ impl RustbotApi {
             .find(|a| a.id() == self.active_agent_id)
             .context("Active agent not found")?;
 
+        // Determine if we should pass tools (only for primary agent)
+        let agent_config = self.agent_configs
+            .iter()
+            .find(|c| c.id == self.active_agent_id);
+
+        let tools = if let Some(config) = agent_config {
+            if config.is_primary {
+                // Primary agent gets access to all enabled specialist tools
+                Some(self.available_tools.clone())
+            } else {
+                // Specialist agents don't get tools
+                None
+            }
+        } else {
+            None
+        };
+
+        // Log tool count if tools are being passed
+        if let Some(ref tool_list) = tools {
+            tracing::debug!(
+                "Passing {} tools to primary agent: {:?}",
+                tool_list.len(),
+                tool_list.iter().map(|t| &t.function.name).collect::<Vec<_>>()
+            );
+        }
+
         // Process message through agent (non-blocking)
         let result_rx = agent.process_message_nonblocking(
             message.to_string(),
             context_messages,
+            tools,
         );
 
         // Add user message to history AFTER sending to agent

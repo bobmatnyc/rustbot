@@ -343,10 +343,16 @@ impl Agent {
 
     /// Process a message without blocking - returns a channel to poll for the result
     /// This spawns the async work in the background and immediately returns
+    ///
+    /// # Arguments
+    /// * `user_message` - The message to process
+    /// * `context_messages` - Previous conversation messages for context
+    /// * `tools` - Optional tool definitions (for primary agent delegation)
     pub fn process_message_nonblocking(
         &self,
         user_message: String,
         context_messages: Vec<LlmMessage>,
+        tools: Option<Vec<ToolDefinition>>,
     ) -> mpsc::UnboundedReceiver<Result<mpsc::UnboundedReceiver<String>>> {
         let (result_tx, result_rx) = mpsc::unbounded_channel();
 
@@ -395,6 +401,12 @@ impl Agent {
             // Create request with web search if enabled
             let mut request = LlmRequest::new(api_messages);
             request.web_search = Some(web_search_enabled);
+
+            // Add tools if provided (for primary agent delegation)
+            if let Some(tool_defs) = tools {
+                request.tools = Some(tool_defs);
+                request.tool_choice = Some("auto".to_string()); // Let LLM decide when to use tools
+            }
 
             // Create channel for streaming response
             let (tx, rx) = mpsc::unbounded_channel();
