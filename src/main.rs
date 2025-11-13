@@ -114,6 +114,7 @@ struct RustbotApp {
     runtime: tokio::runtime::Runtime,
     spinner_rotation: f32,
     token_stats: TokenStats,
+    context_tracker: ContextTracker,
     sidebar_open: bool,
     current_view: AppView,
     settings_view: SettingsView,
@@ -165,6 +166,66 @@ struct TokenStats {
     last_reset_date: String, // Track when daily stats were last reset
 }
 
+#[derive(Clone)]
+struct ContextTracker {
+    max_tokens: u32,              // Model's context window (200k for Claude Sonnet 4)
+    current_tokens: u32,          // Current estimated token usage
+    system_tokens: u32,           // Tokens used by system context (dynamic)
+    conversation_tokens: u32,     // Tokens used by conversation history
+    compaction_threshold: f32,    // Trigger compaction (default: 0.50 = 50%)
+    warning_threshold: f32,       // Show warning (default: 0.75 = 75%)
+}
+
+impl Default for ContextTracker {
+    fn default() -> Self {
+        Self {
+            max_tokens: 200_000,      // Claude Sonnet 4 context window
+            current_tokens: 0,
+            system_tokens: 0,
+            conversation_tokens: 0,
+            compaction_threshold: 0.50,
+            warning_threshold: 0.75,
+        }
+    }
+}
+
+impl ContextTracker {
+    fn usage_percentage(&self) -> f32 {
+        if self.max_tokens == 0 {
+            0.0
+        } else {
+            (self.current_tokens as f32 / self.max_tokens as f32) * 100.0
+        }
+    }
+
+    fn get_color(&self) -> egui::Color32 {
+        let percentage = self.usage_percentage();
+        if percentage < 50.0 {
+            egui::Color32::from_rgb(60, 150, 60)   // Green
+        } else if percentage < 75.0 {
+            egui::Color32::from_rgb(200, 180, 50)  // Yellow
+        } else if percentage < 90.0 {
+            egui::Color32::from_rgb(220, 120, 40)  // Orange
+        } else {
+            egui::Color32::from_rgb(200, 60, 60)   // Red
+        }
+    }
+
+    fn update_counts(&mut self, system_tokens: u32, conversation_tokens: u32) {
+        self.system_tokens = system_tokens;
+        self.conversation_tokens = conversation_tokens;
+        self.current_tokens = system_tokens + conversation_tokens;
+    }
+
+    fn should_compact(&self) -> bool {
+        self.usage_percentage() >= (self.compaction_threshold * 100.0)
+    }
+
+    fn should_warn(&self) -> bool {
+        self.usage_percentage() >= (self.warning_threshold * 100.0)
+    }
+}
+
 enum MessageRole {
     User,
     Assistant,
@@ -185,6 +246,7 @@ impl RustbotApp {
             runtime: tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime"),
             spinner_rotation: 0.0,
             token_stats: Self::check_and_reset_daily_stats(token_stats),
+            context_tracker: ContextTracker::default(),
             sidebar_open: true, // Start with sidebar open
             current_view: AppView::Chat,
             settings_view: SettingsView::AiSettings,
@@ -369,6 +431,19 @@ This information is provided automatically to give you context about the current
         // Create unified LLM request
         let request = LlmRequest::new(api_messages);
 
+        // Update context tracker with current token counts
+        let system_content_tokens = if !system_parts.is_empty() {
+            self.estimate_tokens(&system_parts.join("\n\n"))
+        } else {
+            0
+        };
+
+        let conversation_total_tokens: u32 = self.messages.iter()
+            .map(|msg| self.estimate_tokens(&msg.content))
+            .sum();
+
+        self.context_tracker.update_counts(system_content_tokens, conversation_total_tokens);
+
         // Create channel for streaming responses
         let (tx, rx) = mpsc::unbounded_channel();
         self.response_rx = Some(rx);
@@ -523,6 +598,47 @@ This information is provided automatically to give you context about the current
                     ))
                     .size(11.0)
                     .color(egui::Color32::from_rgb(120, 120, 120)));
+                });
+
+                // Context window progress bar
+                ui.horizontal(|ui| {
+                    let percentage = self.context_tracker.usage_percentage();
+                    let color = self.context_tracker.get_color();
+
+                    // Draw progress bar
+                    let available_width = ui.available_width() - 150.0;
+                    let bar_height = 8.0;
+                    let (rect, _response) = ui.allocate_exact_size(
+                        egui::vec2(available_width, bar_height),
+                        egui::Sense::hover(),
+                    );
+
+                    // Background (gray)
+                    ui.painter().rect_filled(
+                        rect,
+                        2.0,
+                        egui::Color32::from_rgb(200, 200, 200),
+                    );
+
+                    // Filled portion (color-coded)
+                    let filled_width = (available_width * percentage / 100.0).max(0.0).min(available_width);
+                    if filled_width > 0.0 {
+                        let filled_rect = egui::Rect::from_min_size(
+                            rect.min,
+                            egui::vec2(filled_width, bar_height),
+                        );
+                        ui.painter().rect_filled(filled_rect, 2.0, color);
+                    }
+
+                    // Label with percentage and token counts
+                    ui.label(egui::RichText::new(format!(
+                        "{:.1}% ({}/{}k)",
+                        percentage,
+                        self.context_tracker.current_tokens / 1000,
+                        self.context_tracker.max_tokens / 1000
+                    ))
+                    .size(11.0)
+                    .color(color));
                 });
     }
 

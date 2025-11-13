@@ -329,21 +329,248 @@ These will be added in subsequent phases after the POC proves the basic streamin
 
 ---
 
-## Deliverables
+## Deliverables ✅ ALL DELIVERED
 
 ### Code
-- [ ] Working Rust application
-- [ ] Source organized in logical modules
-- [ ] Cargo.toml with all dependencies
+- [x] Working Rust application
+- [x] Source organized in logical modules
+- [x] Cargo.toml with all dependencies
 
 ### Documentation
-- [ ] README.md with setup instructions
-- [ ] Code comments for non-obvious logic
-- [ ] Config file examples
+- [x] README.md with setup instructions
+- [x] Code comments for non-obvious logic
+- [x] Config file examples
+- [x] Development guide (DEVELOPMENT.md)
+- [x] Version management documentation
 
 ### Testing
-- [ ] Manual test results documented
-- [ ] Screenshots or recording of working app
+- [x] Manual test results documented
+- [x] Application thoroughly tested and stable
+
+---
+
+## Phase 2: Event-Driven Architecture Foundation
+
+**Status:** 📋 Planning  
+**Estimated Time:** 3-4 weeks
+
+### Goals
+Transform the basic chatbot into an event-driven system with priority-based interrupts and observable state transitions.
+
+### Core Components to Build
+
+#### 2.1 Event System
+- [ ] Define `AssistantEvent` enum with all event types
+- [ ] Implement `Priority` levels (Critical, High, Normal, Low)
+- [ ] Create `PrioritizedEvent` wrapper with ordering
+- [ ] Build `EventQueue` using `BinaryHeap` with thread-safety
+- [ ] Add event sequence tracking
+
+#### 2.2 State Machine
+- [ ] Define `AgentState` enum (Idle, Processing, Waiting, etc.)
+- [ ] Implement state transition validation
+- [ ] Add state history tracking
+- [ ] Create state transition events
+- [ ] Build state visualization for UI
+
+#### 2.3 Core Assistant Engine
+- [ ] Refactor main loop to use `tokio::select!`
+- [ ] Implement priority event dispatcher
+- [ ] Add interrupt handling mechanism
+- [ ] Create periodic task runner
+- [ ] Build event-to-handler routing
+
+#### 2.4 Observability
+- [ ] Integrate structured logging with `tracing`
+- [ ] Add span instrumentation for operations
+- [ ] Create metrics collection system
+- [ ] Build event stream visualization in UI
+- [ ] Add performance monitoring
+
+### Deliverables
+- Event-driven core engine
+- State machine with transitions
+- Interrupt capability
+- Event visualization panel
+- Comprehensive logging
+
+---
+
+## Phase 3: Tool/Plugin System
+
+**Status:** 📋 Planning  
+**Estimated Time:** 2-3 weeks
+
+### Goals
+Create an extensible tool system that allows the LLM to execute actions and integrate with external systems.
+
+### Core Components to Build
+
+#### 3.1 Tool Framework
+- [ ] Define `Tool` trait with async execution
+- [ ] Create `ToolDefinition` for LLM communication
+- [ ] Implement `ToolRegistry` for management
+- [ ] Add tool timeout and cancellation
+- [ ] Build tool result handling
+
+#### 3.2 Basic Tools
+- [ ] **FileSystemTool**: Read/write files
+- [ ] **ShellTool**: Execute commands
+- [ ] **WebSearchTool**: Search the internet
+- [ ] **SystemTool**: OS-level operations
+- [ ] Add tool documentation generator
+
+#### 3.3 Tool Integration
+- [ ] Modify LLM requests to include tool definitions
+- [ ] Parse tool calls from LLM responses
+- [ ] Execute tools with proper error handling
+- [ ] Send tool results back to LLM
+- [ ] Handle multi-tool workflows
+
+#### 3.4 MCP Compatibility
+- [ ] Research Model Context Protocol
+- [ ] Design MCP server adapter
+- [ ] Implement basic MCP tool loading
+- [ ] Add MCP tool discovery
+
+### Deliverables
+- Working tool system
+- 4+ implemented tools
+- Tool execution visualization
+- MCP compatibility layer
+- Tool marketplace foundation
+
+---
+
+## Phase 4: Advanced UI & Visualization
+
+**Status:** 📋 Planning  
+**Estimated Time:** 2-3 weeks
+
+### Goals
+Build comprehensive visualization for system activity, events, and performance.
+
+### Core Components to Build
+
+#### 4.1 Multi-Panel Layout
+- [ ] Redesign UI with tabbed views
+- [ ] **Chat Panel**: Enhanced conversation view
+- [ ] **Event Stream**: Real-time event log
+- [ ] **Activity Viz**: Timeline and graphs
+- [ ] **System Stats**: Performance metrics
+
+#### 4.2 Activity Visualization
+- [ ] State timeline graph (using egui_plot)
+- [ ] Tool usage charts
+- [ ] Event frequency histogram
+- [ ] Token usage over time
+- [ ] Cost tracking dashboard
+
+#### 4.3 Event Stream Panel
+- [ ] Real-time scrolling event log
+- [ ] Event filtering (by priority, type)
+- [ ] Event details on click
+- [ ] Export event log
+- [ ] Event search
+
+#### 4.4 System Stats Panel
+- [ ] Current state display
+- [ ] Uptime and session info
+- [ ] Memory/CPU usage
+- [ ] Token statistics
+- [ ] Error tracking
+
+### Deliverables
+- Multi-panel UI layout
+- Event stream visualization
+- Activity graphs and charts
+- System monitoring dashboard
+- Performance insights
+
+---
+
+## Phase 5: Production Hardening
+
+**Status:** 📋 Planning  
+**Estimated Time:** 2-3 weeks
+
+### Goals
+Make the system production-ready with persistence, recovery, and optimization.
+
+### Core Components to Build
+
+#### 5.1 Conversation Persistence
+- [ ] Design conversation storage format
+- [ ] Implement save/load for conversations
+- [ ] Add conversation history browser
+- [ ] Export conversations to markdown
+- [ ] Import existing conversations
+
+#### 5.2 Error Recovery
+- [ ] Implement graceful error handling
+- [ ] Add automatic retry logic
+- [ ] Create error recovery workflows
+- [ ] Build error reporting system
+- [ ] Add crash recovery
+
+#### 5.3 Configuration Management
+- [ ] Enhanced settings system
+- [ ] Profile management (multiple configurations)
+- [ ] Import/export settings
+- [ ] Settings validation
+- [ ] Migration system for upgrades
+
+#### 5.4 Performance Optimization
+- [ ] Profile critical paths
+- [ ] Optimize event queue operations
+- [ ] Reduce UI redraws
+- [ ] Memory usage optimization
+- [ ] Async task tuning
+
+#### 5.5 Testing & Quality
+- [ ] Unit tests for core modules
+- [ ] Integration tests for workflows
+- [ ] Benchmark suite
+- [ ] Documentation completion
+- [ ] Code cleanup and refactoring
+
+### Deliverables
+- Persistent conversations
+- Robust error handling
+- Advanced configuration
+- Performance benchmarks
+- Production-ready application
+
+---
+
+## Long-Term Roadmap (Phase 6+)
+
+### Potential Future Features
+- **Multi-Agent Coordination**: Multiple assistants working together
+- **Voice Interface**: Speech-to-text and text-to-speech
+- **Mobile UI**: Touch-optimized interface
+- **Plugin Marketplace**: Community-contributed tools
+- **Collaborative Mode**: Multiple users sharing assistant
+- **Custom LLM Integration**: Local models (Ollama, LM Studio)
+- **Cloud Sync**: Settings and conversations across devices
+- **Advanced Memory**: Long-term memory across sessions
+- **Workflow Automation**: Saved multi-step processes
+- **API Server**: Expose assistant via HTTP API
+
+---
+
+## Current Development Focus
+
+**We are between Phase 1 and Phase 2.**
+
+**Immediate Next Steps:**
+1. Design event system architecture
+2. Implement priority event queue
+3. Create basic state machine
+4. Add event logging and visualization
+5. Refactor existing code to use events
+
+**Priority:** Begin Phase 2 foundation while maintaining Phase 1 functionality.
 
 ---
 
@@ -469,23 +696,6 @@ cargo run
 
 ---
 
-## Questions to Resolve
+## Development Notes
 
-- [ ] Should conversation history be limited? (Suggest: 50 messages)
-- [ ] Should we show token usage in UI? (Suggest: Yes, in status bar)
-- [ ] Default system message? (Suggest: None for POC)
-- [ ] Should message history persist between runs? (Suggest: No for POC)
-- [ ] Window size configurable or fixed? (Suggest: Fixed for POC)
-
----
-
-## Ready to Begin
-
-Once you've reviewed this plan and provided your OpenRouter API key, we can start with Step 1: Project Initialization.
-
-The key is to keep the POC scope tight and focused. We're proving that:
-1. We can connect to OpenRouter
-2. We can stream responses
-3. We can display them in a native UI
-
-Everything else comes later.
+### Decisions Made During Phase 1
