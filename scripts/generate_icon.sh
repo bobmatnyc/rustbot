@@ -4,7 +4,7 @@
 
 set -e
 
-SOURCE_ICON="assets/rustbot-icon.png"
+SOURCE_ICON="assets/rustbot-icon-rust.png"
 ICONSET_DIR="assets/rustbot.iconset"
 
 # Check if source exists
