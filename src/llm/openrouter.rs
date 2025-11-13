@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 const OPENROUTER_API_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4";
+const DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4.5";
 
 pub struct OpenRouterAdapter {
     client: Client,

@@ -204,7 +204,7 @@ struct TokenStats {
 
 #[derive(Clone)]
 struct ContextTracker {
-    max_tokens: u32,              // Model's context window (200k for Claude Sonnet 4)
+    max_tokens: u32,              // Model's context window (200k for Claude Sonnet 4.5)
     current_tokens: u32,          // Current estimated token usage
     system_tokens: u32,           // Tokens used by system context (dynamic)
     conversation_tokens: u32,     // Tokens used by conversation history
@@ -215,7 +215,7 @@ struct ContextTracker {
 impl Default for ContextTracker {
     fn default() -> Self {
         Self {
-            max_tokens: 200_000,      // Claude Sonnet 4 context window
+            max_tokens: 200_000,      // Claude Sonnet 4.5 context window
             current_tokens: 0,
             system_tokens: 0,
             conversation_tokens: 0,
@@ -287,7 +287,7 @@ impl RustbotApp {
             current_view: AppView::Chat,
             settings_view: SettingsView::AiSettings,
             system_prompts,
-            selected_model: "Claude Sonnet 4".to_string(),
+            selected_model: "Claude Sonnet 4.5".to_string(),
         }
     }
 
@@ -419,7 +419,7 @@ impl RustbotApp {
     }
 
     fn calculate_cost(&self, input_tokens: u32, output_tokens: u32) -> f64 {
-        // Claude Sonnet 4 pricing via OpenRouter
+        // Claude Sonnet 4.5 pricing via OpenRouter
         // Input: $3.00 per million tokens
         // Output: $15.00 per million tokens
         const INPUT_COST_PER_MILLION: f64 = 3.0;
@@ -787,6 +787,7 @@ This information is provided automatically to give you context about the current
             egui::ComboBox::from_id_salt("model_selector")
                 .selected_text(&self.selected_model)
                 .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.selected_model, "Claude Sonnet 4.5".to_string(), "Claude Sonnet 4.5");
                     ui.selectable_value(&mut self.selected_model, "Claude Sonnet 4".to_string(), "Claude Sonnet 4");
                     ui.selectable_value(&mut self.selected_model, "Claude Opus 4".to_string(), "Claude Opus 4");
                     ui.selectable_value(&mut self.selected_model, "GPT-4".to_string(), "GPT-4");
