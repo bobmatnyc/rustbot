@@ -96,9 +96,46 @@ Need to:
 4. Execute tool
 5. Format result for LLM
 
+### 3. Message Type Extended for Tool Support
+
+Enhanced the Message type to support tool calls and tool results:
+
+- **Message fields** (`src/llm/types.rs:115-126`)
+  - Added `tool_call_id: Option<String>` for tool result messages
+  - Added `tool_calls: Option<Vec<ToolCall>>` for assistant tool calls
+  - Both fields with `#[serde(default)]` for backward compatibility
+
+- **Helper constructors** (`src/llm/types.rs:128-158`)
+  - `Message::new()` - Simple user/assistant/system messages
+  - `Message::tool_result()` - Create tool result messages
+  - `Message::with_tool_calls()` - Create assistant message with tool calls
+
+- **Updated all Message creations** throughout codebase to use new constructors
+
+### 4. OpenRouter Adapter Tool Support
+
+Updated OpenRouter adapter to support standard OpenAI function calling:
+
+- **ApiRequest changes** (`src/llm/openrouter.rs:187-209`)
+  - Changed `tools` from `Vec<WebSearchTool>` to `Vec<ToolDefinition>`
+  - Added `tool_choice: Option<String>` parameter
+  - Separated web_search (provider feature) from custom tools
+
+- **complete_chat enhancement** (`src/llm/openrouter.rs:169-176`)
+  - Now parses tool_calls from response messages
+  - Returns tool calls in LlmResponse
+  - Removes hardcoded `tool_calls: None` limitation
+
+- **stream_chat updates** (`src/llm/openrouter.rs:40-64`)
+  - Passes through custom tools from request
+  - Passes through tool_choice from request
+  - Maintains web_search as separate provider feature
+
 ## Git Commits
 
 ```
+19c9311 feat: add tool definition support to OpenRouter adapter
+c1aac35 feat: add tool call and tool result support to Message type
 77e085d feat: add tool call detection in streaming responses
 e8a6fe3 feat: add copy button to assistant messages
 ```
@@ -122,19 +159,21 @@ e8a6fe3 feat: add copy button to assistant messages
 - ✅ Tool call type definitions
 - ✅ Tool call detection in stream (logging only)
 - ✅ Copy button UI feature
+- ✅ Message type extended for tool calls and results
+- ✅ OpenRouter adapter supports ToolDefinition format
+- ✅ complete_chat parses tool calls from response
+- ✅ Tool infrastructure ready for execution
 
 **In Progress:**
-- 🔄 Tool call routing architecture design
-- 🔄 Tool call accumulation logic
-- 🔄 Tool execution mechanism
+- 🔄 Tool execution loop in Agent layer
 
 **Pending:**
-- ⏳ Complete tool call accumulation
-- ⏳ Route tool calls to specialist agents
-- ⏳ Execute tools and get results
-- ⏳ Send tool results back to LLM
-- ⏳ Stream final response to user
-- ⏳ End-to-end testing
+- ⏳ Implement tool call execution in Agent.process_message_nonblocking
+- ⏳ Add agent lookup logic (find specialist by tool name)
+- ⏳ Handle tool execution errors gracefully
+- ⏳ Format tool results for LLM
+- ⏳ Make follow-up request with tool results
+- ⏳ End-to-end testing with real specialist agents
 
 ## Architectural Decisions Needed
 
@@ -187,23 +226,65 @@ This matches OpenAI/Anthropic conventions and should work with OpenRouter.
 ## Next Steps
 
 ### Immediate (Next Session):
-1. Decide on streaming architecture approach (recommend Option 4 above)
-2. Implement tool call accumulation in stream handler
-3. Add tool execution logic in Agent layer
-4. Test with web_search agent
+
+**PRIORITY: Implement tool execution loop in Agent layer**
+
+The infrastructure is complete. Now we need to connect the pieces:
+
+1. **Modify Agent.process_message_nonblocking()** to handle tools:
+   - Check if tools parameter is provided
+   - If yes, use `complete_chat` instead of `stream_chat` for initial request
+   - Check if response contains tool calls
+   - If tool calls present, execute tool loop (see below)
+   - If no tool calls, proceed with streaming the response
+
+2. **Implement tool execution logic**:
+   ```rust
+   // Pseudo-code for tool execution loop
+   if let Some(tool_calls) = response.tool_calls {
+       for tool_call in tool_calls {
+           // 1. Find specialist agent by tool name
+           //    (need access to agent registry - may need to pass to Agent)
+
+           // 2. Execute tool call:
+           let result = execute_tool(tool_call.name, tool_call.arguments);
+
+           // 3. Create tool result message:
+           let tool_msg = Message::tool_result(tool_call.id, result);
+           messages.push(tool_msg);
+       }
+
+       // 4. Make follow-up request with tool results
+       let final_response = llm_adapter.stream_chat(updated_request, tx).await?;
+   }
+   ```
+
+3. **Agent registry access**:
+   - Agent currently doesn't have access to other agents
+   - Need to either:
+     - Pass agent registry to Agent via Arc
+     - Have RustbotApi handle tool execution orchestration
+     - Create a ToolExecutor service that has access to agents
+
+   **RECOMMENDATION**: Have RustbotApi orchestrate tool calls
+   - RustbotApi already has agent registry
+   - Agent returns tool calls to RustbotApi
+   - RustbotApi executes tools by routing to specialist agents
+   - RustbotApi makes follow-up request with results
 
 ### Short Term:
-1. Create tool result message format
-2. Implement follow-up LLM request with tool result
-3. Handle multiple sequential tool calls
-4. Add error handling for tool failures
+1. Add error handling for tool execution failures
+2. Handle multiple sequential tool calls properly
+3. Add tool call timeout handling
+4. Test with real specialist agents (web_search, etc.)
+5. Add tool call logging/debugging
 
 ### Future Enhancements:
 1. Support parallel tool calls
-2. Implement proper streaming with tool calls (upgrade from Option 4 to Option 3)
+2. Implement streaming with tool calls (upgrade to full streaming support)
 3. Add tool call caching/memoization
-4. Add tool call timeout handling
-5. Add tool call usage tracking
+4. Add tool call usage tracking and analytics
+5. Support tool call retries with exponential backoff
 
 ## Technical Debt
 
