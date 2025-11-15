@@ -26,8 +26,22 @@ fn main() -> std::result::Result<(), eframe::Error> {
     // Initialize tracing for logging
     tracing_subscriber::fmt::init();
 
-    // Load .env.local file
-    dotenvy::from_filename(".env.local").ok();
+    // Load .env.local file - try multiple locations for robustness
+    // First try current directory, then executable directory
+    let env_loaded = dotenvy::from_filename(".env.local").is_ok()
+        || if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                dotenvy::from_path(exe_dir.join(".env.local")).is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+    if !env_loaded {
+        tracing::warn!(".env.local file not found - will need OPENROUTER_API_KEY from environment");
+    }
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -47,17 +61,17 @@ fn main() -> std::result::Result<(), eframe::Error> {
             // Load Roboto Regular
             fonts.font_data.insert(
                 "Roboto-Regular".to_owned(),
-                egui::FontData::from_static(include_bytes!(
+                std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
                     "../assets/fonts/Roboto-Regular.ttf"
-                )),
+                ))),
             );
 
             // Load Roboto Bold
             fonts.font_data.insert(
                 "Roboto-Bold".to_owned(),
-                egui::FontData::from_static(include_bytes!(
+                std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
                     "../assets/fonts/Roboto-Bold.ttf"
-                )),
+                ))),
             );
 
             // Set Roboto as the default proportional font (first = highest priority)
@@ -74,11 +88,30 @@ fn main() -> std::result::Result<(), eframe::Error> {
                 .or_default()
                 .push("Roboto-Regular".to_owned());
 
+            // Add Phosphor icon font for icons
+            egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+
             // Apply fonts
             cc.egui_ctx.set_fonts(fonts);
 
-            let api_key = std::env::var("OPENROUTER_API_KEY")
-                .expect("OPENROUTER_API_KEY not found in .env.local");
+            // Get API key with proper error handling to avoid panic in FFI boundary
+            let api_key = match std::env::var("OPENROUTER_API_KEY") {
+                Ok(key) => key,
+                Err(_) => {
+                    // Log error for debugging
+                    tracing::error!("OPENROUTER_API_KEY not found in environment");
+                    tracing::error!("Please ensure .env.local file exists with OPENROUTER_API_KEY=your_key");
+
+                    // Display error message to user and exit gracefully
+                    eprintln!("\n❌ ERROR: Missing OPENROUTER_API_KEY environment variable\n");
+                    eprintln!("Please create a .env.local file in the project directory with:");
+                    eprintln!("OPENROUTER_API_KEY=your_api_key_here\n");
+                    eprintln!("Get your API key from: https://openrouter.ai/keys\n");
+
+                    // Exit gracefully instead of panicking in FFI boundary
+                    std::process::exit(1);
+                }
+            };
             Ok(Box::new(RustbotApp::new(api_key)))
         }),
     )
@@ -102,6 +135,7 @@ struct RustbotApp {
     settings_view: SettingsView,
     system_prompts: SystemPrompts,
     selected_model: String,
+    current_activity: Option<String>,  // Track current agent activity
 
     // Event visualization
     event_rx: broadcast::Receiver<Event>,
@@ -178,6 +212,7 @@ impl RustbotApp {
             settings_view: SettingsView::Agents, // Start with Agents view to show loaded agents
             system_prompts,
             selected_model: "Claude Sonnet 4.5".to_string(),
+            current_activity: None,
             event_rx,
             agent_configs: agent_configs.clone(),
             selected_agent_index: None,
@@ -372,9 +407,81 @@ This information is provided automatically to give you context about the current
     }
 
     fn clear_conversation(&mut self) {
+        tracing::info!("🗑️  Clearing conversation - UI messages: {}, Event history: {}",
+            self.messages.len(), self.event_history.len());
+
+        // Clear UI state
         self.messages.clear();
         self.current_response.clear();
         self.context_tracker.update_counts(0, 0);
+
+        // Clear event flow display
+        self.event_history.clear();
+
+        // Clear API conversation history and publish event
+        let api = Arc::clone(&self.api);
+        self.runtime.spawn(async move {
+            let mut api_guard = api.lock().await;
+            api_guard.clear_history();
+        });
+    }
+
+    fn reload_config(&mut self) {
+        tracing::info!("🔄 Reloading Rustbot configuration...");
+
+        // Get API key from environment
+        let api_key = match std::env::var("OPENROUTER_API_KEY") {
+            Ok(key) => key,
+            Err(_) => {
+                tracing::error!("OPENROUTER_API_KEY not found - cannot reload");
+                return;
+            }
+        };
+
+        // Create fresh event bus
+        let event_bus = Arc::new(EventBus::new());
+        let event_rx = event_bus.subscribe();
+
+        // Create fresh LLM adapter
+        let llm_adapter: Arc<dyn LlmAdapter> = Arc::from(create_adapter(AdapterType::OpenRouter, api_key));
+
+        // Reload agents from JSON preset files
+        let agent_loader = agent::AgentLoader::new();
+        let agent_configs = agent_loader.load_all()
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to load agents from presets: {}", e);
+                vec![AgentConfig::default_assistant()]
+            });
+
+        tracing::info!("📋 Reloaded {} agents", agent_configs.len());
+        for config in &agent_configs {
+            tracing::info!("   - {} (primary: {}, enabled: {})",
+                         config.id, config.is_primary, config.enabled);
+        }
+
+        // Rebuild the API with reloaded agents
+        let mut api_builder = api::RustbotApiBuilder::new()
+            .event_bus(Arc::clone(&event_bus))
+            .runtime(Arc::clone(&self.runtime))
+            .llm_adapter(Arc::clone(&llm_adapter))
+            .max_history_size(20)
+            .system_instructions(self.system_prompts.system_instructions.clone());
+
+        for agent_config in &agent_configs {
+            api_builder = api_builder.add_agent(agent_config.clone());
+        }
+
+        let api = api_builder.build().expect("Failed to rebuild RustbotApi");
+
+        // Update app state with new components
+        self.api = Arc::new(Mutex::new(api));
+        self.event_rx = event_rx;
+        self.agent_configs = agent_configs;
+
+        // Clear conversation on reload
+        self.clear_conversation();
+
+        tracing::info!("✅ Configuration reloaded successfully");
     }
 
     fn send_message(&mut self, _ctx: &egui::Context) {
@@ -526,11 +633,30 @@ impl eframe::App for RustbotApp {
                     }
                     EventKind::AgentStatusChange { agent_id, status } => {
                         tracing::info!("Agent {} status changed to {:?}", agent_id, status);
+
+                        // Update current activity based on agent status
+                        use events::AgentStatus;
+                        self.current_activity = match status {
+                            AgentStatus::ExecutingTool(ref tool_name) => {
+                                Some(format!("🔧 Executing tool: {}", tool_name))
+                            }
+                            AgentStatus::Thinking => {
+                                Some("🤔 Thinking...".to_string())
+                            }
+                            AgentStatus::Responding => {
+                                Some("💬 Generating response...".to_string())
+                            }
+                            AgentStatus::Idle => None,
+                            AgentStatus::Error(_) => None,
+                        };
                     }
                     EventKind::SystemCommand(cmd) => {
                         match cmd {
                             SystemCommand::ClearConversation => {
-                                self.clear_conversation();
+                                // DON'T call self.clear_conversation() here - that would create an infinite loop!
+                                // The UI already cleared its state when the Clear button was clicked.
+                                // This event is for other components (agents, etc.) to know the conversation was cleared.
+                                tracing::debug!("ClearConversation event received (already handled)");
                             }
                             SystemCommand::SaveState => {
                                 tracing::info!("Save state command received");
@@ -558,6 +684,14 @@ impl eframe::App for RustbotApp {
             self.spinner_rotation += 0.1;
             ctx.request_repaint();
         }
+
+        // Handle keyboard shortcuts
+        ctx.input(|i| {
+            // Cmd+R (macOS) or Ctrl+R (Windows/Linux) to reload configuration
+            if i.modifiers.command && i.key_pressed(egui::Key::R) {
+                self.reload_config();
+            }
+        });
 
         // Check for pending agent result (from non-blocking async task)
         if let Some(result_rx) = &mut self.pending_agent_result {
@@ -719,6 +853,18 @@ impl eframe::App for RustbotApp {
                             if settings_button.clicked() {
                                 self.current_view = AppView::Settings;
                             }
+                        });
+
+                        ui.add_space(5.0);
+
+                        // Reload configuration button
+                        ui.horizontal(|ui| {
+                            if ui.button(format!("{} Reload Config", icons::ARROW_CLOCKWISE)).clicked() {
+                                self.reload_config();
+                            }
+                            ui.label(egui::RichText::new("⌘R")
+                                .size(12.0)
+                                .color(egui::Color32::from_rgb(120, 120, 120)));
                         });
 
                         ui.add_space(20.0);
