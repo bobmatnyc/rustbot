@@ -169,6 +169,83 @@ impl MarketplaceView {
         });
     }
 
+    /// Deduplicate servers to show only latest stable version of each service
+    ///
+    /// # Design Decision: Deduplication Strategy
+    ///
+    /// The MCP Registry API returns all versions of each server, including older versions.
+    /// This creates a confusing UX with multiple "filesystem" entries, for example.
+    ///
+    /// **Strategy**: Use the `is_latest` field from API metadata
+    /// - The registry already identifies the latest version via `meta.official.is_latest`
+    /// - This is more reliable than custom version parsing (handles pre-releases, etc.)
+    /// - Falls back to keeping duplicates if `is_latest` is false for all versions
+    ///
+    /// **Alternative Considered**: Custom version comparison
+    /// - Rejected: Complex edge cases (pre-release versions, different naming schemes)
+    /// - Registry API is authoritative source - trust its versioning logic
+    ///
+    /// # Algorithm
+    ///
+    /// 1. Group servers by base name (extract name before '@' if present)
+    /// 2. For each group, prefer entries where `is_latest == true`
+    /// 3. If no `is_latest` entry exists, keep first occurrence
+    ///
+    /// # Performance
+    ///
+    /// - Time Complexity: O(n) where n = number of servers
+    /// - Space Complexity: O(n) for HashMap
+    /// - Typical input: 20-50 servers per page, negligible overhead
+    ///
+    /// # Example
+    ///
+    /// Input:
+    /// - filesystem@0.5.1 (is_latest: true)
+    /// - filesystem@0.5.0 (is_latest: false)
+    /// - filesystem@0.4.9 (is_latest: false)
+    ///
+    /// Output:
+    /// - filesystem@0.5.1 (is_latest: true)
+    fn deduplicate_servers(servers: Vec<McpServerWrapper>) -> Vec<McpServerWrapper> {
+        use std::collections::HashMap;
+
+        // Group by base name (name before '@' symbol)
+        let mut latest_versions: HashMap<String, McpServerWrapper> = HashMap::new();
+
+        for server_wrapper in servers {
+            let name = &server_wrapper.server.name;
+
+            // Extract base name (e.g., "filesystem@0.5.1" -> "filesystem")
+            // Some servers may not have '@' (already base name)
+            let base_name = name.split('@')
+                .next()
+                .unwrap_or(name)
+                .to_string();
+
+            match latest_versions.get(&base_name) {
+                None => {
+                    // First occurrence of this service - keep it
+                    latest_versions.insert(base_name, server_wrapper);
+                }
+                Some(existing) => {
+                    // Prefer the one marked as latest by the registry
+                    let candidate_is_latest = server_wrapper.meta.official.is_latest;
+                    let existing_is_latest = existing.meta.official.is_latest;
+
+                    if candidate_is_latest && !existing_is_latest {
+                        // Replace with latest version
+                        latest_versions.insert(base_name, server_wrapper);
+                    }
+                    // If both are latest or both are not latest, keep existing (arbitrary choice)
+                    // If existing is latest and candidate is not, keep existing (do nothing)
+                }
+            }
+        }
+
+        // Convert HashMap back to Vec
+        latest_versions.into_values().collect()
+    }
+
     /// Process async fetch results
     ///
     /// Called from `render()` to check for completed async tasks.
@@ -179,7 +256,10 @@ impl MarketplaceView {
 
             match result {
                 FetchResult::Success(registry) => {
-                    self.servers = registry.servers;
+                    // Deduplicate servers to show only latest versions
+                    let servers = Self::deduplicate_servers(registry.servers);
+                    self.servers = servers;
+
                     if let Some(metadata) = registry.metadata {
                         self.total_servers = metadata.count;
                         self.next_cursor = metadata.next_cursor;
@@ -564,5 +644,114 @@ impl MarketplaceView {
     /// Calculate total pages
     fn total_pages(&self) -> usize {
         (self.total_servers + self.servers_per_page - 1) / self.servers_per_page
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::marketplace::{
+        McpServerWrapper, McpServerListing, ServerMeta, OfficialMetadata,
+        Repository,
+    };
+
+    /// Helper to create a test server wrapper
+    fn create_test_server(name: &str, is_latest: bool) -> McpServerWrapper {
+        McpServerWrapper {
+            server: McpServerListing {
+                schema: None,
+                name: name.to_string(),
+                description: format!("Test server: {}", name),
+                repository: Repository {
+                    url: "https://github.com/test/test".to_string(),
+                    source: "github".to_string(),
+                },
+                version: "1.0.0".to_string(),
+                packages: vec![],
+                remotes: vec![],
+            },
+            meta: ServerMeta {
+                official: OfficialMetadata {
+                    status: "active".to_string(),
+                    published_at: "2025-01-01T00:00:00Z".to_string(),
+                    updated_at: "2025-01-01T00:00:00Z".to_string(),
+                    is_latest,
+                },
+            },
+        }
+    }
+
+    #[test]
+    fn test_deduplicate_servers_keeps_latest_version() {
+        // Create test data with duplicate server names
+        let servers = vec![
+            create_test_server("filesystem@0.5.1", true),  // Latest
+            create_test_server("filesystem@0.5.0", false),
+            create_test_server("filesystem@0.4.9", false),
+            create_test_server("sqlite@1.2.3", true),      // Latest
+            create_test_server("sqlite@1.2.2", false),
+        ];
+
+        let deduplicated = MarketplaceView::deduplicate_servers(servers);
+
+        // Should only have 2 servers (one filesystem, one sqlite)
+        assert_eq!(deduplicated.len(), 2);
+
+        // Verify we kept the latest versions
+        let names: Vec<String> = deduplicated.iter()
+            .map(|w| w.server.name.clone())
+            .collect();
+
+        assert!(names.contains(&"filesystem@0.5.1".to_string()));
+        assert!(names.contains(&"sqlite@1.2.3".to_string()));
+    }
+
+    #[test]
+    fn test_deduplicate_servers_preserves_unique_servers() {
+        let servers = vec![
+            create_test_server("filesystem@0.5.1", true),
+            create_test_server("sqlite@1.2.3", true),
+            create_test_server("postgres@2.0.0", true),
+        ];
+
+        let deduplicated = MarketplaceView::deduplicate_servers(servers.clone());
+
+        // All servers are unique, should keep all
+        assert_eq!(deduplicated.len(), 3);
+    }
+
+    #[test]
+    fn test_deduplicate_servers_handles_no_latest_flag() {
+        // Edge case: All versions have is_latest=false
+        let servers = vec![
+            create_test_server("filesystem@0.5.1", false),
+            create_test_server("filesystem@0.5.0", false),
+        ];
+
+        let deduplicated = MarketplaceView::deduplicate_servers(servers);
+
+        // Should keep first occurrence when no latest version marked
+        assert_eq!(deduplicated.len(), 1);
+        assert_eq!(deduplicated[0].server.name, "filesystem@0.5.1");
+    }
+
+    #[test]
+    fn test_deduplicate_servers_handles_names_without_version() {
+        let servers = vec![
+            create_test_server("filesystem", true),  // No @ symbol
+            create_test_server("sqlite@1.2.3", true),
+        ];
+
+        let deduplicated = MarketplaceView::deduplicate_servers(servers);
+
+        // Both should be kept (different base names)
+        assert_eq!(deduplicated.len(), 2);
+    }
+
+    #[test]
+    fn test_deduplicate_servers_empty_input() {
+        let servers = vec![];
+        let deduplicated = MarketplaceView::deduplicate_servers(servers);
+        assert_eq!(deduplicated.len(), 0);
     }
 }
