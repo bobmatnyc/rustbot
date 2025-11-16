@@ -18,6 +18,7 @@ pub enum AppView {
     Settings,
     Plugins,
     Events,
+    Marketplace,
 }
 
 /// Settings sub-view

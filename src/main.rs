@@ -154,6 +154,7 @@ struct RustbotApp {
     // MCP Plugin Manager and UI
     mcp_manager: Arc<Mutex<McpPluginManager>>,
     plugins_view: Option<PluginsView>,
+    marketplace_view: Option<ui::MarketplaceView>,
 
     // Keep runtime for async operations
     runtime: Arc<tokio::runtime::Runtime>,
@@ -234,6 +235,9 @@ impl RustbotApp {
             runtime.handle().clone()
         ));
 
+        // Create marketplace view with runtime handle
+        let marketplace_view = Some(ui::MarketplaceView::new(runtime.handle().clone()));
+
         Self {
             api: Arc::new(Mutex::new(api)),
             message_input: String::new(),
@@ -258,6 +262,7 @@ impl RustbotApp {
             pending_agent_result: None,
             mcp_manager,
             plugins_view,
+            marketplace_view,
             runtime,
         }
     }
@@ -934,6 +939,21 @@ impl eframe::App for RustbotApp {
 
                         ui.add_space(5.0);
 
+                        // Marketplace button
+                        ui.horizontal(|ui| {
+                            let marketplace_button = ui.add(
+                                egui::SelectableLabel::new(
+                                    self.current_view == AppView::Marketplace,
+                                    format!("{} Marketplace", icons::STOREFRONT)
+                                )
+                            );
+                            if marketplace_button.clicked() {
+                                self.current_view = AppView::Marketplace;
+                            }
+                        });
+
+                        ui.add_space(5.0);
+
                         // Reload configuration button
                         ui.horizontal(|ui| {
                             if ui.button(format!("{} Reload Config", icons::ARROW_CLOCKWISE)).clicked() {
@@ -1041,6 +1061,7 @@ impl eframe::App for RustbotApp {
                     AppView::Settings => self.render_settings_view(ui),
                     AppView::Plugins => self.render_plugins_view(ui, ctx),
                     AppView::Events => self.render_events_view(ui),
+                    AppView::Marketplace => self.render_marketplace_view(ui, ctx),
                 }
             });
         });

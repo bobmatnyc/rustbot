@@ -5,6 +5,7 @@ pub mod icon;
 pub mod plugins;
 pub mod types;
 pub mod views;
+pub mod marketplace;
 
 // Re-export commonly used types for convenience
 pub use types::{
@@ -13,3 +14,4 @@ pub use types::{
 };
 
 pub use plugins::PluginsView;
+pub use marketplace::MarketplaceView;

@@ -522,6 +522,28 @@ impl crate::RustbotApp {
         }
     }
 
+    /// Render the marketplace view
+    ///
+    /// Displays the MCP Marketplace browser for discovering and installing MCP servers.
+    ///
+    /// # Arguments
+    /// * `ui` - The egui UI context for rendering
+    /// * `ctx` - The egui Context for global state and repaints
+    pub fn render_marketplace_view(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if let Some(marketplace_view) = &mut self.marketplace_view {
+            marketplace_view.render(ui, ctx);
+        } else {
+            ui.vertical_centered(|ui| {
+                ui.add_space(50.0);
+                ui.label(
+                    egui::RichText::new("Marketplace view not initialized")
+                        .size(14.0)
+                        .color(egui::Color32::from_rgb(120, 120, 120))
+                );
+            });
+        }
+    }
+
     /// Render the agents management view
     ///
     /// Displays all configured agents and allows:
