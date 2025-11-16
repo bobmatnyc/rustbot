@@ -321,6 +321,132 @@ impl RustbotApi {
         &self.available_tools
     }
 
+    /// Start automatic MCP tool registration via event bus
+    ///
+    /// Spawns a background task that listens for MCP plugin lifecycle events
+    /// and automatically registers/unregisters tools.
+    ///
+    /// Design Decision: Event-driven tool registration
+    ///
+    /// Rationale: Decouples API from MCP manager lifecycle. Plugins can start/stop
+    /// dynamically without manual registration calls. Makes system reactive and extensible.
+    ///
+    /// # Arguments
+    /// * `api` - Arc-wrapped API instance (for async task access)
+    ///
+    /// # Returns
+    /// JoinHandle for the background task (can be used for graceful shutdown)
+    ///
+    /// # Side Effects
+    /// - Spawns tokio task that runs for application lifetime
+    /// - Subscribes to event bus for MCP plugin events
+    /// - Automatically registers tools when plugins start
+    /// - Automatically unregisters tools when plugins stop
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let api = Arc::new(Mutex::new(RustbotApi::new(/*...*/)));
+    /// let task = RustbotApi::start_mcp_auto_registration(Arc::clone(&api));
+    /// // Auto-registration now active
+    /// ```
+    pub async fn start_mcp_auto_registration(
+        api: Arc<Mutex<RustbotApi>>,
+    ) -> tokio::task::JoinHandle<()> {
+        // Clone event bus Arc for the async task
+        let event_bus = {
+            let api_guard = api.lock().await;
+            Arc::clone(&api_guard.event_bus)
+        };
+
+        tokio::spawn(async move {
+            let mut rx = event_bus.subscribe();
+
+            tracing::info!("MCP auto-registration task started");
+
+            while let Ok(event) = rx.recv().await {
+                if let EventKind::McpPluginEvent(plugin_event) = event.kind {
+                    match plugin_event {
+                        crate::events::McpPluginEvent::Started { plugin_id, tool_count } => {
+                            tracing::info!(
+                                "Plugin '{}' started with {} tools, auto-registering...",
+                                plugin_id, tool_count
+                            );
+
+                            // Get tools from plugin via MCP manager
+                            let tools_result = {
+                                let mut api_guard = api.lock().await;
+                                match &api_guard.mcp_manager {
+                                    Some(manager) => {
+                                        let mgr = manager.lock().await;
+                                        mgr.get_plugin_tools(&plugin_id).await
+                                    }
+                                    None => {
+                                        tracing::warn!("MCP manager not configured, cannot register tools");
+                                        continue;
+                                    }
+                                }
+                            };
+
+                            match tools_result {
+                                Ok(tools) => {
+                                    let mut registered_count = 0;
+                                    let mut failed_count = 0;
+
+                                    // Register each tool
+                                    for tool in tools {
+                                        let mut api_guard = api.lock().await;
+                                        match api_guard.register_mcp_tool(tool, plugin_id.clone()).await {
+                                            Ok(_) => registered_count += 1,
+                                            Err(e) => {
+                                                tracing::error!(
+                                                    "Failed to register tool from plugin '{}': {}",
+                                                    plugin_id, e
+                                                );
+                                                failed_count += 1;
+                                            }
+                                        }
+                                    }
+
+                                    tracing::info!(
+                                        "✓ Auto-registered {} tools for plugin '{}' ({} failed)",
+                                        registered_count, plugin_id, failed_count
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Failed to get tools from plugin '{}': {}",
+                                        plugin_id, e
+                                    );
+                                }
+                            }
+                        }
+                        crate::events::McpPluginEvent::Stopped { plugin_id } => {
+                            tracing::info!("Plugin '{}' stopped, auto-unregistering tools...", plugin_id);
+
+                            let mut api_guard = api.lock().await;
+                            match api_guard.unregister_mcp_tools(&plugin_id).await {
+                                Ok(_) => {
+                                    tracing::info!("✓ Auto-unregistered tools for plugin '{}'", plugin_id);
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Failed to unregister tools for plugin '{}': {}",
+                                        plugin_id, e
+                                    );
+                                }
+                            }
+                        }
+                        _ => {
+                            // Other MCP events we don't handle yet
+                        }
+                    }
+                }
+            }
+
+            tracing::info!("MCP auto-registration task ended");
+        })
+    }
+
     /// Register an agent with the system
     /// This makes the agent available for message processing
     pub fn register_agent(&mut self, agent: Agent) {
