@@ -36,6 +36,7 @@ use tokio::task::JoinHandle;
 
 use super::config::McpConfig;
 use super::plugin::{PluginMetadata, PluginState, PluginType, ToolInfo};
+use super::protocol::McpToolDefinition;
 use super::error::{McpError, Result};
 use super::stdio::StdioTransport;
 use super::client::McpClient;
@@ -644,6 +645,39 @@ impl McpPluginManager {
     pub async fn has_plugin(&self, id: &str) -> bool {
         let plugins = self.plugins.read().await;
         plugins.contains_key(id)
+    }
+
+    /// Get tools from a running plugin
+    ///
+    /// Returns the MCP tool definitions for a plugin. These can be registered
+    /// with the API layer for agent discovery.
+    ///
+    /// # Arguments
+    /// * `plugin_id` - ID of the plugin to get tools from
+    ///
+    /// # Returns
+    /// Vector of MCP tool definitions, or error if plugin not found/running
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let tools = manager.get_plugin_tools("filesystem").await?;
+    /// for tool in tools {
+    ///     api.register_mcp_tool(tool, "filesystem".to_string()).await?;
+    /// }
+    /// ```
+    pub async fn get_plugin_tools(&self, plugin_id: &str) -> Result<Vec<McpToolDefinition>> {
+        let plugins = self.plugins.read().await;
+        let plugin = plugins.get(plugin_id)
+            .ok_or_else(|| McpError::PluginNotFound(plugin_id.to_string()))?;
+
+        // Convert ToolInfo back to McpToolDefinition
+        let tools = plugin.tools.iter().map(|t| McpToolDefinition {
+            name: t.name.clone(),
+            description: t.description.clone(),
+            input_schema: t.input_schema.clone(),
+        }).collect();
+
+        Ok(tools)
     }
 
     // ========================================================================

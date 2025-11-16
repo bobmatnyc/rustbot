@@ -5,13 +5,36 @@
 use crate::agent::{Agent, AgentConfig, AgentResponse, ToolDefinition};
 use crate::events::{Event, EventBus, EventKind, AgentStatus};
 use crate::llm::{Message as LlmMessage, LlmAdapter};
+use crate::mcp::protocol::McpToolDefinition;
+use crate::mcp::manager::McpPluginManager;
 use crate::tool_executor::ToolExecutor;
 use anyhow::{Result, Context as AnyhowContext};
 use async_trait::async_trait;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
+use tokio::sync::RwLock;
 use tokio::runtime::Runtime;
+
+/// Tool source identifier for routing execution
+#[derive(Debug, Clone, PartialEq)]
+pub enum ToolSource {
+    /// Tool is a native Rustbot agent
+    Agent { agent_id: String },
+
+    /// Tool is from an MCP plugin
+    Mcp { plugin_id: String },
+}
+
+/// Registry entry for MCP tools
+#[derive(Debug, Clone)]
+struct McpToolRegistry {
+    /// MCP tool definition
+    definition: McpToolDefinition,
+
+    /// Source plugin ID
+    plugin_id: String,
+}
 
 /// Core API for Rustbot functionality
 /// All user actions should have equivalent API methods here
@@ -31,6 +54,14 @@ pub struct RustbotApi {
     /// Tool definitions for enabled specialist agents
     /// These are automatically built from agent_configs
     available_tools: Vec<ToolDefinition>,
+
+    /// MCP tools registry (thread-safe for async plugin operations)
+    /// Maps tool name (mcp:plugin_id:tool_name) to registry entry
+    mcp_tools: Arc<RwLock<HashMap<String, McpToolRegistry>>>,
+
+    /// MCP plugin manager (thread-safe for async operations)
+    /// Optional - only present if MCP support is enabled
+    mcp_manager: Option<Arc<Mutex<McpPluginManager>>>,
 
     /// Currently active agent ID
     active_agent_id: String,
@@ -55,9 +86,190 @@ impl RustbotApi {
             agents: Vec::new(),
             agent_configs: Vec::new(),
             available_tools: Vec::new(),
+            mcp_tools: Arc::new(RwLock::new(HashMap::new())),
+            mcp_manager: None, // MCP manager can be added later via set_mcp_manager()
             active_agent_id: String::from("assistant"),
             message_history: VecDeque::new(),
             max_history_size,
+        }
+    }
+
+    /// Set the MCP plugin manager
+    ///
+    /// Call this after creating RustbotApi to enable MCP plugin support.
+    /// The manager will be used for routing MCP tool calls.
+    ///
+    /// # Arguments
+    /// * `manager` - Initialized MCP plugin manager
+    pub fn set_mcp_manager(&mut self, manager: Arc<Mutex<McpPluginManager>>) {
+        self.mcp_manager = Some(manager);
+    }
+
+    /// Get reference to MCP manager (if configured)
+    pub fn mcp_manager(&self) -> Option<Arc<Mutex<McpPluginManager>>> {
+        self.mcp_manager.clone()
+    }
+
+    /// Register an MCP tool from a plugin
+    ///
+    /// Converts MCP tool definition to Rustbot tool format and adds to registry.
+    /// Tool names are namespaced as "mcp:{plugin_id}:{tool_name}" for uniqueness.
+    ///
+    /// # Arguments
+    /// * `tool` - MCP tool definition from plugin discovery
+    /// * `plugin_id` - ID of the source plugin
+    ///
+    /// # Returns
+    /// Ok if tool registered successfully, Err if tool already exists
+    ///
+    /// # Side Effects
+    /// - Adds tool to global tool registry
+    /// - Updates available_tools list
+    /// - Tool becomes visible to agents
+    pub async fn register_mcp_tool(&mut self, tool: McpToolDefinition, plugin_id: String) -> Result<()> {
+        let tool_name = format!("mcp:{}:{}", plugin_id, tool.name);
+
+        tracing::debug!("Registering MCP tool: {} from plugin {}", tool_name, plugin_id);
+
+        // Check for duplicates
+        {
+            let mcp_tools = self.mcp_tools.read().await;
+            if mcp_tools.contains_key(&tool_name) {
+                anyhow::bail!("MCP tool '{}' already registered", tool_name);
+            }
+        }
+
+        // Convert MCP tool to Rustbot ToolDefinition format
+        let rustbot_tool = Self::convert_mcp_tool_to_rustbot(&tool, &plugin_id, &tool_name);
+
+        // Store in MCP registry
+        {
+            let mut mcp_tools = self.mcp_tools.write().await;
+            mcp_tools.insert(tool_name.clone(), McpToolRegistry {
+                definition: tool,
+                plugin_id: plugin_id.clone(),
+            });
+        }
+
+        // Add to available tools list
+        self.available_tools.push(rustbot_tool);
+
+        tracing::info!("MCP tool registered: {} (total tools: {})", tool_name, self.available_tools.len());
+
+        Ok(())
+    }
+
+    /// Unregister all MCP tools from a plugin
+    ///
+    /// Removes all tools associated with the specified plugin ID.
+    /// Call this when a plugin stops or is disabled.
+    ///
+    /// # Arguments
+    /// * `plugin_id` - ID of the plugin whose tools should be removed
+    ///
+    /// # Side Effects
+    /// - Removes all matching tools from registry
+    /// - Updates available_tools list
+    /// - Tools no longer visible to agents
+    pub async fn unregister_mcp_tools(&mut self, plugin_id: &str) -> Result<()> {
+        tracing::debug!("Unregistering MCP tools for plugin: {}", plugin_id);
+
+        let mut removed_count = 0;
+
+        // Remove from MCP registry and collect tool names
+        let removed_tools: Vec<String> = {
+            let mut mcp_tools = self.mcp_tools.write().await;
+            let to_remove: Vec<String> = mcp_tools
+                .iter()
+                .filter(|(_, entry)| entry.plugin_id == plugin_id)
+                .map(|(name, _)| name.clone())
+                .collect();
+
+            for tool_name in &to_remove {
+                mcp_tools.remove(tool_name);
+                removed_count += 1;
+            }
+
+            to_remove
+        };
+
+        // Remove from available tools list
+        self.available_tools.retain(|tool| {
+            !removed_tools.contains(&tool.function.name)
+        });
+
+        tracing::info!(
+            "Unregistered {} MCP tools from plugin {} (remaining tools: {})",
+            removed_count,
+            plugin_id,
+            self.available_tools.len()
+        );
+
+        Ok(())
+    }
+
+    /// Get all available tools (both agent and MCP tools)
+    ///
+    /// Returns a snapshot of all tools currently available to agents.
+    /// Includes both native Rustbot agent tools and MCP plugin tools.
+    pub fn get_all_tools(&self) -> Vec<ToolDefinition> {
+        self.available_tools.clone()
+    }
+
+    /// Check if a tool name is an MCP tool
+    ///
+    /// MCP tools are namespaced with "mcp:" prefix
+    fn is_mcp_tool(tool_name: &str) -> bool {
+        tool_name.starts_with("mcp:")
+    }
+
+    /// Parse MCP tool name into (plugin_id, tool_name)
+    ///
+    /// Expected format: "mcp:{plugin_id}:{tool_name}"
+    ///
+    /// # Returns
+    /// Ok((plugin_id, tool_name)) or Err if format is invalid
+    fn parse_mcp_tool_name(tool_name: &str) -> Result<(String, String)> {
+        let parts: Vec<&str> = tool_name.split(':').collect();
+        if parts.len() != 3 || parts[0] != "mcp" {
+            anyhow::bail!("Invalid MCP tool name format: '{}' (expected 'mcp:plugin_id:tool_name')", tool_name);
+        }
+
+        Ok((parts[1].to_string(), parts[2].to_string()))
+    }
+
+    /// Convert MCP tool definition to Rustbot tool format
+    ///
+    /// Creates a ToolDefinition compatible with Rustbot's agent system.
+    /// The inputSchema from MCP is already JSON Schema, so it's directly compatible.
+    ///
+    /// # Arguments
+    /// * `mcp_tool` - MCP tool definition
+    /// * `plugin_id` - Source plugin ID
+    /// * `full_name` - Namespaced tool name (mcp:plugin_id:tool_name)
+    ///
+    /// # Returns
+    /// ToolDefinition for use in agent tool lists
+    fn convert_mcp_tool_to_rustbot(
+        mcp_tool: &McpToolDefinition,
+        plugin_id: &str,
+        full_name: &str,
+    ) -> ToolDefinition {
+        use crate::agent::tools::{FunctionDefinition, FunctionParameters};
+
+        ToolDefinition {
+            tool_type: "function".to_string(),
+            function: FunctionDefinition {
+                name: full_name.to_string(),
+                description: mcp_tool.description.clone().unwrap_or_else(|| {
+                    format!("MCP tool {} from plugin {}", mcp_tool.name, plugin_id)
+                }),
+                parameters: FunctionParameters {
+                    param_type: "object".to_string(),
+                    properties: mcp_tool.input_schema.clone(),
+                    required: vec![], // MCP schema should specify required fields internally
+                },
+            },
         }
     }
 
@@ -569,11 +781,20 @@ impl RustbotApi {
 }
 
 /// Implement ToolExecutor for RustbotApi
-/// This allows agents to execute tool calls by delegating to specialist agents
+/// This allows agents to execute tool calls by delegating to specialist agents or MCP plugins
 #[async_trait]
 impl ToolExecutor for RustbotApi {
     async fn execute_tool(&self, tool_name: &str, arguments: &str) -> Result<String> {
         tracing::info!("Executing tool: {} with args: {}", tool_name, arguments);
+
+        // Check if this is an MCP tool
+        if Self::is_mcp_tool(tool_name) {
+            tracing::debug!("Routing to MCP tool: {}", tool_name);
+            return self.execute_mcp_tool(tool_name, arguments).await;
+        }
+
+        // Not an MCP tool - route to specialist agent
+        tracing::debug!("Routing to specialist agent: {}", tool_name);
 
         // Find the specialist agent matching the tool name
         let specialist_agent = self.agents
@@ -609,6 +830,67 @@ impl ToolExecutor for RustbotApi {
         }
 
         tracing::info!("Tool execution result: {}", result);
+        Ok(result)
+    }
+}
+
+impl RustbotApi {
+    /// Execute an MCP tool through the plugin manager
+    ///
+    /// Internal helper for routing MCP tool calls. Parses the tool name,
+    /// validates the plugin is running, and executes the tool.
+    ///
+    /// # Arguments
+    /// * `tool_name` - Namespaced tool name (mcp:plugin_id:tool_name)
+    /// * `arguments` - JSON-encoded tool arguments
+    ///
+    /// # Returns
+    /// Tool execution result as string, or error
+    ///
+    /// # Errors
+    /// - Invalid tool name format
+    /// - MCP manager not configured
+    /// - Plugin not running
+    /// - Tool execution failed
+    async fn execute_mcp_tool(&self, tool_name: &str, arguments: &str) -> Result<String> {
+        // Parse tool name
+        let (plugin_id, mcp_tool_name) = Self::parse_mcp_tool_name(tool_name)?;
+
+        tracing::debug!(
+            "Executing MCP tool '{}' on plugin '{}'",
+            mcp_tool_name,
+            plugin_id
+        );
+
+        // Get MCP manager
+        let manager = self.mcp_manager
+            .as_ref()
+            .context("MCP plugin manager not configured")?;
+
+        // Parse arguments to JSON
+        let args_json: Option<serde_json::Value> = if arguments.trim().is_empty() {
+            None
+        } else {
+            Some(serde_json::from_str(arguments)
+                .context(format!("Invalid JSON arguments for MCP tool '{}': {}", tool_name, arguments))?)
+        };
+
+        // Execute tool via manager
+        let mut manager_guard = manager.lock().await;
+        let result = manager_guard
+            .execute_tool(&plugin_id, &mcp_tool_name, args_json)
+            .await
+            .context(format!(
+                "MCP tool execution failed: plugin='{}', tool='{}'",
+                plugin_id, mcp_tool_name
+            ))?;
+
+        tracing::info!(
+            "MCP tool '{}' executed successfully, result length: {} chars",
+            tool_name,
+            result.len()
+        );
+
         Ok(result)
     }
 }
@@ -718,6 +1000,20 @@ impl Default for RustbotApiBuilder {
 mod tests {
     use super::*;
     use crate::llm::OpenRouterAdapter;
+    use std::sync::Once;
+
+    // Shared runtime for async tests to avoid drop issues
+    static INIT: Once = Once::new();
+    static mut TEST_RUNTIME: Option<Arc<Runtime>> = None;
+
+    fn get_test_runtime() -> Arc<Runtime> {
+        unsafe {
+            INIT.call_once(|| {
+                TEST_RUNTIME = Some(Arc::new(Runtime::new().unwrap()));
+            });
+            TEST_RUNTIME.clone().unwrap()
+        }
+    }
 
     #[test]
     fn test_api_creation() {
@@ -728,6 +1024,164 @@ mod tests {
 
         assert_eq!(api.active_agent(), "assistant");
         assert_eq!(api.list_agents().len(), 0); // No agents registered yet
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_mcp_tool_registration() {
+        let event_bus = Arc::new(EventBus::new());
+        let runtime = get_test_runtime();
+        let mut api = RustbotApi::new(Arc::clone(&event_bus), Arc::clone(&runtime), 20);
+
+        // Create test MCP tool
+        let tool = McpToolDefinition {
+            name: "read_file".to_string(),
+            description: Some("Read a file".to_string()),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string" }
+                },
+                "required": ["path"]
+            }),
+        };
+
+        // Register tool
+        api.register_mcp_tool(tool.clone(), "filesystem".to_string())
+            .await
+            .unwrap();
+
+        // Verify tool appears in available tools
+        let tools = api.get_all_tools();
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].function.name, "mcp:filesystem:read_file");
+        assert!(tools[0].function.description.contains("Read a file"));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_mcp_tool_unregistration() {
+        let event_bus = Arc::new(EventBus::new());
+        let runtime = get_test_runtime();
+        let mut api = RustbotApi::new(Arc::clone(&event_bus), Arc::clone(&runtime), 20);
+
+        // Register multiple tools from same plugin
+        let tool1 = McpToolDefinition {
+            name: "read_file".to_string(),
+            description: Some("Read a file".to_string()),
+            input_schema: serde_json::json!({"type": "object"}),
+        };
+
+        let tool2 = McpToolDefinition {
+            name: "write_file".to_string(),
+            description: Some("Write a file".to_string()),
+            input_schema: serde_json::json!({"type": "object"}),
+        };
+
+        api.register_mcp_tool(tool1, "filesystem".to_string())
+            .await
+            .unwrap();
+        api.register_mcp_tool(tool2, "filesystem".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(api.get_all_tools().len(), 2);
+
+        // Unregister all tools from plugin
+        api.unregister_mcp_tools("filesystem").await.unwrap();
+
+        assert_eq!(api.get_all_tools().len(), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_mcp_tool_duplicate_rejection() {
+        let event_bus = Arc::new(EventBus::new());
+        let runtime = get_test_runtime();
+        let mut api = RustbotApi::new(Arc::clone(&event_bus), Arc::clone(&runtime), 20);
+
+        let tool = McpToolDefinition {
+            name: "read_file".to_string(),
+            description: Some("Read a file".to_string()),
+            input_schema: serde_json::json!({"type": "object"}),
+        };
+
+        // First registration should succeed
+        api.register_mcp_tool(tool.clone(), "filesystem".to_string())
+            .await
+            .unwrap();
+
+        // Second registration of same tool should fail
+        let result = api.register_mcp_tool(tool, "filesystem".to_string()).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("already registered"));
+    }
+
+    #[test]
+    fn test_is_mcp_tool() {
+        assert!(RustbotApi::is_mcp_tool("mcp:filesystem:read_file"));
+        assert!(RustbotApi::is_mcp_tool("mcp:web:fetch"));
+        assert!(!RustbotApi::is_mcp_tool("web_search"));
+        assert!(!RustbotApi::is_mcp_tool("agent_tool"));
+    }
+
+    #[test]
+    fn test_parse_mcp_tool_name() {
+        // Valid format
+        let (plugin, tool) = RustbotApi::parse_mcp_tool_name("mcp:filesystem:read_file").unwrap();
+        assert_eq!(plugin, "filesystem");
+        assert_eq!(tool, "read_file");
+
+        // Invalid formats
+        assert!(RustbotApi::parse_mcp_tool_name("filesystem:read_file").is_err());
+        assert!(RustbotApi::parse_mcp_tool_name("mcp:filesystem").is_err());
+        assert!(RustbotApi::parse_mcp_tool_name("read_file").is_err());
+        assert!(RustbotApi::parse_mcp_tool_name("mcp:filesystem:read:file").is_err()); // Too many parts
+    }
+
+    #[test]
+    fn test_convert_mcp_tool_to_rustbot() {
+        let mcp_tool = McpToolDefinition {
+            name: "read_file".to_string(),
+            description: Some("Read contents of a file".to_string()),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path"
+                    }
+                },
+                "required": ["path"]
+            }),
+        };
+
+        let rustbot_tool =
+            RustbotApi::convert_mcp_tool_to_rustbot(&mcp_tool, "filesystem", "mcp:filesystem:read_file");
+
+        assert_eq!(rustbot_tool.tool_type, "function");
+        assert_eq!(rustbot_tool.function.name, "mcp:filesystem:read_file");
+        assert_eq!(
+            rustbot_tool.function.description,
+            "Read contents of a file"
+        );
+        assert!(rustbot_tool.function.parameters.properties.is_object());
+    }
+
+    #[test]
+    fn test_convert_mcp_tool_without_description() {
+        let mcp_tool = McpToolDefinition {
+            name: "read_file".to_string(),
+            description: None, // No description provided
+            input_schema: serde_json::json!({"type": "object"}),
+        };
+
+        let rustbot_tool =
+            RustbotApi::convert_mcp_tool_to_rustbot(&mcp_tool, "filesystem", "mcp:filesystem:read_file");
+
+        // Should generate a default description
+        assert!(rustbot_tool.function.description.contains("filesystem"));
+        assert!(rustbot_tool.function.description.contains("read_file"));
     }
 
     #[test]
