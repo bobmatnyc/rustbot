@@ -919,6 +919,21 @@ impl eframe::App for RustbotApp {
 
                         ui.add_space(5.0);
 
+                        // Events button
+                        ui.horizontal(|ui| {
+                            let events_button = ui.add(
+                                egui::SelectableLabel::new(
+                                    self.current_view == AppView::Events,
+                                    format!("{} Events", icons::LIST_BULLETS)
+                                )
+                            );
+                            if events_button.clicked() {
+                                self.current_view = AppView::Events;
+                            }
+                        });
+
+                        ui.add_space(5.0);
+
                         // Reload configuration button
                         ui.horizontal(|ui| {
                             if ui.button(format!("{} Reload Config", icons::ARROW_CLOCKWISE)).clicked() {
@@ -1025,6 +1040,7 @@ impl eframe::App for RustbotApp {
                     AppView::Chat => self.render_chat_view(ui, ctx),
                     AppView::Settings => self.render_settings_view(ui),
                     AppView::Plugins => self.render_plugins_view(ui, ctx),
+                    AppView::Events => self.render_events_view(ui),
                 }
             });
         });

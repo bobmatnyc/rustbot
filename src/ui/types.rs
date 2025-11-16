@@ -17,6 +17,7 @@ pub enum AppView {
     Chat,
     Settings,
     Plugins,
+    Events,
 }
 
 /// Settings sub-view

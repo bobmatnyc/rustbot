@@ -491,6 +491,37 @@ impl crate::RustbotApp {
         }
     }
 
+    /// Render the events view showing recent MCP plugin events
+    ///
+    /// Displays a dedicated view for monitoring MCP plugin events including:
+    /// - Plugin starts/stops
+    /// - Errors and health status changes
+    /// - Tool changes and configuration reloads
+    ///
+    /// # Arguments
+    /// * `ui` - The egui UI context for rendering
+    pub fn render_events_view(&self, ui: &mut egui::Ui) {
+        ui.add_space(20.0);
+        ui.heading(format!("{} Recent Events", icons::LIST_BULLETS));
+        ui.add_space(10.0);
+
+        ui.label("Monitor MCP plugin activity and events:");
+        ui.add_space(15.0);
+
+        if let Some(plugins_view) = &self.plugins_view {
+            plugins_view.render_events_only(ui);
+        } else {
+            ui.vertical_centered(|ui| {
+                ui.add_space(50.0);
+                ui.label(
+                    egui::RichText::new("No event data available")
+                        .size(14.0)
+                        .color(egui::Color32::from_rgb(120, 120, 120))
+                );
+            });
+        }
+    }
+
     /// Render the agents management view
     ///
     /// Displays all configured agents and allows:

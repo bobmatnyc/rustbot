@@ -16,8 +16,9 @@
 //! UI Components:
 //! 1. Plugin List (left): Status, name, tool count
 //! 2. Plugin Details (right): Full info, control buttons
-//! 3. Recent Events (bottom): Last 10 events with timestamps
-//! 4. Global Controls (toolbar): Reload config
+//! 3. Global Controls (toolbar): Reload config
+//!
+//! Note: Recent Events moved to dedicated Events view (see render_events_only())
 
 use eframe::egui;
 use egui_phosphor::regular as icons;
@@ -137,10 +138,8 @@ impl PluginsView {
         }
 
         // Main content area with scrolling
-        let available_height = ui.available_height() - 150.0; // Reserve space for events
-
         egui::ScrollArea::vertical()
-            .max_height(available_height.max(300.0))
+            .auto_shrink([false; 2])
             .show(ui, |ui| {
                 // Two-column layout
                 ui.columns(2, |columns| {
@@ -155,12 +154,6 @@ impl PluginsView {
                     });
                 });
             });
-
-        // Bottom: Recent Events
-        ui.separator();
-        ui.collapsing(format!("{} Recent Events", icons::LIST_BULLETS), |ui| {
-            self.render_recent_events(ui);
-        });
     }
 
     /// Render plugin list (left column)
@@ -428,6 +421,14 @@ impl PluginsView {
                 );
             });
         }
+    }
+
+    /// Render only the events panel (for standalone Events view)
+    ///
+    /// Public method that renders just the events section without any wrapper.
+    /// Used by the Events view to display plugin events in a dedicated page.
+    pub fn render_events_only(&self, ui: &mut egui::Ui) {
+        self.render_recent_events(ui);
     }
 
     /// Render recent events (bottom section)
