@@ -30,11 +30,23 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::path::Path;
+use std::time::SystemTime;
 use tokio::sync::RwLock;
 
 use super::config::McpConfig;
-use super::plugin::{PluginMetadata, PluginState, PluginType};
+use super::plugin::{PluginMetadata, PluginState, PluginType, ToolInfo};
 use super::error::{McpError, Result};
+use super::stdio::StdioTransport;
+use super::client::McpClient;
+use super::transport::McpTransport;
+
+/// Running plugin instance
+///
+/// Holds the active MCP client and metadata for a running plugin.
+struct RunningPlugin {
+    metadata: PluginMetadata,
+    client: McpClient<StdioTransport>,
+}
 
 /// MCP Plugin Manager
 ///
@@ -63,6 +75,9 @@ pub struct McpPluginManager {
 
     /// Plugin metadata registry
     plugins: Arc<RwLock<HashMap<String, PluginMetadata>>>,
+
+    /// Running plugin instances (Phase 2)
+    running_plugins: Arc<RwLock<HashMap<String, RunningPlugin>>>,
 }
 
 impl McpPluginManager {
@@ -78,6 +93,7 @@ impl McpPluginManager {
                 },
             })),
             plugins: Arc::new(RwLock::new(HashMap::new())),
+            running_plugins: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -180,27 +196,247 @@ impl McpPluginManager {
 
     /// Start a plugin (Phase 2 implementation)
     ///
-    /// Phase 1: Stub - returns error
-    /// Phase 2: Will spawn process / establish HTTP connection
+    /// Spawns the plugin process, establishes connection, performs MCP handshake,
+    /// and discovers available tools.
     ///
     /// Error Conditions:
     /// - Plugin not found: Returns PluginNotFound
     /// - Plugin already running: No-op, returns Ok
     /// - Transport failure: Returns Transport error
-    pub async fn start_plugin(&mut self, _id: &str) -> Result<()> {
-        Err(McpError::Protocol(
-            "Plugin starting not implemented in Phase 1 (foundation only)".to_string()
-        ))
+    /// - Protocol failure: Returns Protocol error
+    ///
+    /// Side Effects:
+    /// - Updates plugin state: Stopped → Starting → Initializing → Running
+    /// - Stores running plugin instance
+    /// - Populates tool list in metadata
+    ///
+    /// Example:
+    /// ```rust,ignore
+    /// manager.start_plugin("filesystem").await?;
+    /// let plugin = manager.get_plugin("filesystem").await.unwrap();
+    /// assert_eq!(plugin.state, PluginState::Running);
+    /// println!("Tools: {}", plugin.tools.len());
+    /// ```
+    pub async fn start_plugin(&mut self, id: &str) -> Result<()> {
+        // Check if already running
+        {
+            let running = self.running_plugins.read().await;
+            if running.contains_key(id) {
+                return Ok(()); // Already running, idempotent
+            }
+        }
+
+        // Get plugin config
+        let config = self.config.read().await;
+        let server_config = config.mcp_plugins.local_servers.iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| McpError::PluginNotFound(id.to_string()))?
+            .clone();
+        drop(config);
+
+        // Update state to Starting
+        {
+            let mut plugins = self.plugins.write().await;
+            if let Some(plugin) = plugins.get_mut(id) {
+                plugin.state = PluginState::Starting;
+            }
+        }
+
+        // Create and start transport
+        let mut transport = StdioTransport::new(server_config.clone());
+        match transport.start().await {
+            Ok(_) => {},
+            Err(e) => {
+                // Update state to Error
+                let mut plugins = self.plugins.write().await;
+                if let Some(plugin) = plugins.get_mut(id) {
+                    plugin.state = PluginState::Error {
+                        message: format!("Failed to start transport: {}", e),
+                        timestamp: SystemTime::now(),
+                    };
+                }
+                return Err(e);
+            }
+        }
+
+        // Update state to Initializing
+        {
+            let mut plugins = self.plugins.write().await;
+            if let Some(plugin) = plugins.get_mut(id) {
+                plugin.state = PluginState::Initializing;
+            }
+        }
+
+        // Create client and initialize
+        let mut client = McpClient::new(transport);
+        match client.initialize().await {
+            Ok(_) => {},
+            Err(e) => {
+                // Update state to Error
+                let mut plugins = self.plugins.write().await;
+                if let Some(plugin) = plugins.get_mut(id) {
+                    plugin.state = PluginState::Error {
+                        message: format!("Failed to initialize: {}", e),
+                        timestamp: SystemTime::now(),
+                    };
+                }
+                return Err(e);
+            }
+        }
+
+        // List tools
+        let tools = match client.list_tools().await {
+            Ok(tools) => tools,
+            Err(e) => {
+                // Tool listing failed, but plugin is initialized
+                // Log warning and continue with empty tool list
+                eprintln!("Warning: Failed to list tools for {}: {}", id, e);
+                Vec::new()
+            }
+        };
+
+        // Update metadata with tools and set state to Running
+        {
+            let mut plugins = self.plugins.write().await;
+            if let Some(plugin) = plugins.get_mut(id) {
+                plugin.state = PluginState::Running;
+                plugin.tools = tools.iter().map(|t| ToolInfo {
+                    name: t.name.clone(),
+                    description: t.description.clone(),
+                    input_schema: t.input_schema.clone(),
+                }).collect();
+            }
+        }
+
+        // Get updated metadata
+        let metadata = {
+            let plugins = self.plugins.read().await;
+            plugins.get(id).cloned()
+                .ok_or_else(|| McpError::PluginNotFound(id.to_string()))?
+        };
+
+        // Store running plugin
+        self.running_plugins.write().await.insert(id.to_string(), RunningPlugin {
+            metadata,
+            client,
+        });
+
+        Ok(())
     }
 
     /// Stop a plugin (Phase 2 implementation)
     ///
-    /// Phase 1: Stub - returns error
-    /// Phase 2: Will terminate process / close HTTP connection
-    pub async fn stop_plugin(&mut self, _id: &str) -> Result<()> {
-        Err(McpError::Protocol(
-            "Plugin stopping not implemented in Phase 1 (foundation only)".to_string()
-        ))
+    /// Gracefully shuts down the plugin process and cleans up resources.
+    ///
+    /// Error Conditions:
+    /// - Plugin not found: Returns PluginNotFound
+    /// - Plugin not running: No-op, returns Ok
+    /// - Close failure: Logs warning but returns Ok (cleanup best-effort)
+    ///
+    /// Side Effects:
+    /// - Updates plugin state: Running → Stopping → Stopped
+    /// - Removes from running_plugins
+    /// - Clears tool list in metadata
+    ///
+    /// Example:
+    /// ```rust,ignore
+    /// manager.stop_plugin("filesystem").await?;
+    /// let plugin = manager.get_plugin("filesystem").await.unwrap();
+    /// assert_eq!(plugin.state, PluginState::Stopped);
+    /// ```
+    pub async fn stop_plugin(&mut self, id: &str) -> Result<()> {
+        // Update state to Stopping
+        {
+            let mut plugins = self.plugins.write().await;
+            if let Some(plugin) = plugins.get_mut(id) {
+                if matches!(plugin.state, PluginState::Stopped | PluginState::Disabled) {
+                    return Ok(()); // Already stopped, idempotent
+                }
+                plugin.state = PluginState::Stopping;
+            }
+        }
+
+        // Remove from running plugins and close transport
+        let mut running = self.running_plugins.write().await;
+        if let Some(mut plugin) = running.remove(id) {
+            if let Err(e) = plugin.client.transport_mut().close().await {
+                eprintln!("Warning: Error closing transport for {}: {}", id, e);
+            }
+        }
+        drop(running);
+
+        // Update state to Stopped and clear tools
+        {
+            let mut plugins = self.plugins.write().await;
+            if let Some(plugin) = plugins.get_mut(id) {
+                plugin.state = PluginState::Stopped;
+                plugin.tools.clear();
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Execute a tool from a running plugin
+    ///
+    /// Calls a tool on an active plugin and returns the result.
+    ///
+    /// Preconditions:
+    /// - Plugin must be running (call start_plugin() first)
+    /// - Tool must exist in plugin's tool list
+    ///
+    /// Error Conditions:
+    /// - Plugin not found: Returns PluginNotFound
+    /// - Plugin not running: Returns Transport error
+    /// - Tool not found: Server returns error
+    /// - Invalid arguments: Server returns error
+    ///
+    /// Tool Error Handling:
+    /// - Tool execution errors are returned in the result text with is_error flag
+    /// - Check result for error before using
+    ///
+    /// Example:
+    /// ```rust,ignore
+    /// let result = manager.execute_tool(
+    ///     "filesystem",
+    ///     "read_file",
+    ///     Some(serde_json::json!({"path": "/etc/hosts"}))
+    /// ).await?;
+    /// println!("Result: {}", result);
+    /// ```
+    pub async fn execute_tool(
+        &mut self,
+        plugin_id: &str,
+        tool_name: &str,
+        arguments: Option<serde_json::Value>
+    ) -> Result<String> {
+        // Get running plugin
+        let mut running = self.running_plugins.write().await;
+        let plugin = running.get_mut(plugin_id)
+            .ok_or_else(|| McpError::PluginNotFound(format!(
+                "Plugin '{}' not running (call start_plugin() first)", plugin_id
+            )))?;
+
+        // Call tool
+        let result = plugin.client.call_tool(tool_name.to_string(), arguments).await?;
+
+        // Check for tool-level error
+        if result.is_error == Some(true) {
+            // Tool execution failed - return error text
+            let error_text = result.content.iter()
+                .map(|c| c.text.clone())
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(McpError::Protocol(format!("Tool execution error: {}", error_text)));
+        }
+
+        // Extract text from successful result
+        let text = result.content.iter()
+            .map(|c| c.text.clone())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Ok(text)
     }
 
     /// Reload configuration from disk (Phase 3 implementation)
@@ -358,14 +594,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_phase1_stub_methods() {
-        let manager = McpPluginManager::new();
+    async fn test_start_plugin_not_found() {
+        let mut manager = McpPluginManager::new();
 
-        // Phase 1 stubs should return errors
-        let result = manager.clone().start_plugin("test").await;
+        // Starting non-existent plugin should fail
+        let result = manager.start_plugin("nonexistent").await;
         assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Plugin not found"));
+    }
 
-        let result = manager.clone().stop_plugin("test").await;
-        assert!(result.is_err());
+    #[tokio::test]
+    async fn test_stop_plugin_idempotent() {
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let config_json = r#"{
+            "mcp_plugins": {
+                "local_servers": [
+                    {
+                        "id": "test",
+                        "name": "Test",
+                        "command": "echo",
+                        "args": [],
+                        "enabled": true
+                    }
+                ],
+                "cloud_services": []
+            }
+        }"#;
+        temp_file.write_all(config_json.as_bytes()).unwrap();
+        temp_file.flush().unwrap();
+
+        let mut manager = McpPluginManager::new();
+        manager.load_config(temp_file.path()).await.unwrap();
+
+        // Stopping a stopped plugin should succeed (idempotent)
+        let result = manager.stop_plugin("test").await;
+        assert!(result.is_ok());
     }
 }

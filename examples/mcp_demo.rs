@@ -1,19 +1,23 @@
 //! MCP Plugin Manager Demo
 //!
-//! This example demonstrates the Phase 1 MCP functionality:
+//! This example demonstrates MCP functionality through Phase 2:
 //! - Loading configuration from JSON
 //! - Listing available plugins
-//! - Querying plugin states
-//! - Checking plugin metadata
+//! - Starting/stopping plugins (Phase 2)
+//! - Tool discovery (Phase 2)
+//! - Tool execution (Phase 2)
 //!
 //! Run with: cargo run --example mcp_demo
+//!
+//! Note: Requires actual MCP servers to be installed for Phase 2 features.
+//! Example: npm install -g @modelcontextprotocol/server-filesystem
 
 use rustbot::mcp::{McpPluginManager, PluginState};
 use std::path::Path;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== MCP Plugin Manager Demo (Phase 1) ===\n");
+    println!("=== MCP Plugin Manager Demo (Phase 1 + 2) ===\n");
 
     // Create manager
     let mut manager = McpPluginManager::new();
@@ -84,14 +88,69 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    println!("\n=== Phase 1 Demo Complete ===");
-    println!("\nPhase 1 Status:");
-    println!("  ✅ Configuration loading");
-    println!("  ✅ Plugin metadata tracking");
-    println!("  ✅ State management");
-    println!("  ⏳ Plugin starting/stopping (Phase 2)");
-    println!("  ⏳ Tool execution (Phase 2)");
-    println!("  ⏳ UI integration (Phase 4)");
+    // Phase 2: Try to start a plugin (requires MCP server to be installed)
+    println!("\n🚀 Phase 2: Starting plugins...\n");
+
+    // Try to start filesystem plugin (if configured)
+    if manager.has_plugin("filesystem").await {
+        println!("Attempting to start 'filesystem' plugin...");
+        match manager.start_plugin("filesystem").await {
+            Ok(_) => {
+                println!("✓ Started filesystem plugin successfully!\n");
+
+                // List tools
+                if let Some(plugin) = manager.get_plugin("filesystem").await {
+                    println!("📦 Available tools:");
+                    for tool in &plugin.tools {
+                        println!("   - {}", tool.name);
+                        if let Some(desc) = &tool.description {
+                            println!("     {}", desc);
+                        }
+                    }
+                    println!();
+                }
+
+                // Try to execute a tool (example: list files in /tmp)
+                println!("🔧 Executing tool: list_directory");
+                match manager.execute_tool(
+                    "filesystem",
+                    "list_directory",
+                    Some(serde_json::json!({"path": "/tmp"}))
+                ).await {
+                    Ok(result) => {
+                        println!("✓ Tool execution successful!");
+                        println!("   Result preview: {}...",
+                            result.chars().take(200).collect::<String>());
+                    }
+                    Err(e) => {
+                        println!("⚠️  Tool execution failed: {}", e);
+                        println!("   (This is expected if the tool/path doesn't exist)");
+                    }
+                }
+
+                // Stop plugin
+                println!("\n⏸️  Stopping plugin...");
+                manager.stop_plugin("filesystem").await?;
+                println!("✓ Plugin stopped successfully");
+            }
+            Err(e) => {
+                println!("⚠️  Could not start filesystem plugin: {}", e);
+                println!("   This is expected if MCP server is not installed.");
+                println!("   Install with: npm install -g @modelcontextprotocol/server-filesystem");
+            }
+        }
+    } else {
+        println!("⚠️  No 'filesystem' plugin configured");
+        println!("   Add to mcp_config.json to test Phase 2 functionality");
+    }
+
+    println!("\n=== Demo Complete ===");
+    println!("\nImplementation Status:");
+    println!("  ✅ Phase 1: Configuration & Metadata");
+    println!("  ✅ Phase 2: stdio Transport & Tool Execution");
+    println!("  ⏳ Phase 3: Auto-restart & Tool Registry");
+    println!("  ⏳ Phase 4: UI Integration");
+    println!("  ⏳ Phase 5: HTTP Transport & Cloud Services");
 
     Ok(())
 }

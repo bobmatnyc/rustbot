@@ -34,18 +34,18 @@
 //!
 //! # Implementation Status
 //!
-//! ## Phase 1: Foundation (CURRENT)
+//! ## Phase 1: Foundation (COMPLETE)
 //! - ✅ Configuration schema and loading
 //! - ✅ Plugin metadata and state machine
 //! - ✅ Basic plugin manager
 //! - ✅ Error types
 //!
-//! ## Phase 2: stdio Transport (NEXT)
-//! - ⏳ Process spawning with tokio::process
-//! - ⏳ stdin/stdout JSON-RPC communication
-//! - ⏳ MCP handshake (initialize/initialized)
-//! - ⏳ Tool discovery (tools/list)
-//! - ⏳ Tool execution (tools/call)
+//! ## Phase 2: stdio Transport (COMPLETE)
+//! - ✅ Process spawning with tokio::process
+//! - ✅ stdin/stdout JSON-RPC communication
+//! - ✅ MCP handshake (initialize/initialized)
+//! - ✅ Tool discovery (tools/list)
+//! - ✅ Tool execution (tools/call)
 //!
 //! ## Phase 3: Plugin Manager Core
 //! - ⏳ Auto-restart with exponential backoff
@@ -116,7 +116,10 @@ pub mod config;
 pub mod error;
 pub mod manager;
 pub mod plugin;
-// pub mod transport;  // Phase 2: Transport layer (stdio, HTTP)
+pub mod transport;  // Phase 2: Transport layer (stdio, HTTP)
+pub mod protocol;   // Phase 2: MCP protocol types
+pub mod stdio;      // Phase 2: stdio transport implementation
+pub mod client;     // Phase 2: High-level MCP client
 
 // Re-export commonly used types for convenience
 pub use config::{
@@ -147,6 +150,25 @@ pub use error::{
     McpError,
     Result,
 };
+
+pub use transport::{
+    McpTransport,
+    JsonRpcRequest,
+    JsonRpcResponse,
+    RequestId,
+};
+
+pub use protocol::{
+    InitializeParams,
+    InitializeResult,
+    McpToolDefinition,
+    ToolCallParams,
+    ToolCallResult,
+};
+
+pub use stdio::StdioTransport;
+
+pub use client::McpClient;
 
 /// MCP Protocol Version
 ///
