@@ -30,7 +30,6 @@
 //! The UI layer is responsible for user-facing error messages and retry logic.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Base URL for the official MCP Registry
 const REGISTRY_BASE_URL: &str = "https://registry.modelcontextprotocol.io";
@@ -135,12 +134,26 @@ impl Default for MarketplaceClient {
 /// and optional pagination metadata for navigating large result sets.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct McpRegistry {
-    /// List of MCP server listings
-    pub servers: Vec<McpServerListing>,
+    /// List of MCP server listings (wrapped in server + metadata)
+    pub servers: Vec<McpServerWrapper>,
 
-    /// Pagination metadata (present when results are paginated)
+    /// Pagination metadata (uses cursor-based pagination)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub pagination: Option<Pagination>,
+    pub metadata: Option<RegistryMetadata>,
+}
+
+/// Wrapper for server listing with metadata
+///
+/// Each entry in the registry contains the server definition and
+/// associated metadata (publication info, official status, etc.)
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct McpServerWrapper {
+    /// The actual server definition
+    pub server: McpServerListing,
+
+    /// Registry metadata (publication date, official status)
+    #[serde(rename = "_meta")]
+    pub meta: ServerMeta,
 }
 
 /// Server listing metadata
@@ -150,77 +163,158 @@ pub struct McpRegistry {
 ///
 /// # Field Descriptions
 ///
-/// - `name`: Unique identifier and display name
+/// - `name`: Unique identifier and display name (e.g., "ai.exa/exa")
 /// - `description`: Human-readable description of functionality
-/// - `package_type`: Installation method (npm, pypi, docker, remote)
-/// - `package`: Package identifier (e.g., npm package name)
-/// - `command`: Executable command to run the server
-/// - `args`: Command-line arguments for the server
-/// - `env`: Required environment variables (keys only, values set by user)
-/// - `official`: True if maintained by Anthropic
-/// - `version`: Latest version number (if versioned)
-/// - `homepage`: Documentation/repository URL
+/// - `repository`: Source code repository information
+/// - `version`: Latest version number
+/// - `packages`: Installation packages (npm, pypi, docker, etc.)
+/// - `remotes`: Remote server endpoints (for streamable-http servers)
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct McpServerListing {
-    /// Server name (unique identifier)
+    /// Schema URL (optional, not used)
+    #[serde(rename = "$schema", skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+
+    /// Server name (unique identifier, e.g., "ai.exa/exa")
     pub name: String,
 
     /// Human-readable description
+    #[serde(default)]
     pub description: String,
 
-    /// Package type: "npm", "pypi", "docker", or "remote"
-    #[serde(rename = "packageType")]
-    pub package_type: String,
-
-    /// Package identifier (e.g., "@modelcontextprotocol/server-filesystem")
-    pub package: String,
-
-    /// Command to execute (e.g., "npx", "uvx", "docker")
-    pub command: String,
-
-    /// Command arguments
-    pub args: Vec<String>,
-
-    /// Environment variable keys (user must provide values)
+    /// Source code repository
     #[serde(default)]
-    pub env: HashMap<String, String>,
+    pub repository: Repository,
 
-    /// True if official Anthropic server
+    /// Version string
     #[serde(default)]
-    pub official: bool,
+    pub version: String,
 
-    /// Version string (if versioned)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
+    /// Installation packages (OCI, npm, etc.)
+    #[serde(default)]
+    pub packages: Vec<Package>,
 
-    /// Homepage/documentation URL
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub homepage: Option<String>,
+    /// Remote endpoints (for HTTP-based servers)
+    #[serde(default)]
+    pub remotes: Vec<Remote>,
 }
 
-/// Pagination metadata
+/// Repository information
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct Repository {
+    /// Repository URL (e.g., "https://github.com/exa-labs/exa-mcp-server")
+    #[serde(default)]
+    pub url: String,
+
+    /// Source type (e.g., "github")
+    #[serde(default)]
+    pub source: String,
+}
+
+/// Package installation information
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Package {
+    /// Registry type: "oci", "npm", "pypi", etc.
+    #[serde(rename = "registryType")]
+    pub registry_type: String,
+
+    /// Package identifier (e.g., "docker.io/aliengiraffe/spotdb:0.1.0")
+    pub identifier: String,
+
+    /// Transport configuration
+    #[serde(default)]
+    pub transport: Transport,
+
+    /// Required environment variables
+    #[serde(rename = "environmentVariables", default)]
+    pub environment_variables: Vec<EnvironmentVariable>,
+}
+
+/// Transport configuration for package
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct Transport {
+    /// Transport type (e.g., "stdio")
+    #[serde(rename = "type", default)]
+    pub transport_type: String,
+}
+
+/// Environment variable definition
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EnvironmentVariable {
+    /// Variable name
+    pub name: String,
+
+    /// Human-readable description
+    #[serde(default)]
+    pub description: String,
+
+    /// Value format (e.g., "string")
+    #[serde(default)]
+    pub format: String,
+
+    /// Whether this is a secret (should be hidden in UI)
+    #[serde(rename = "isSecret", default)]
+    pub is_secret: bool,
+}
+
+/// Remote server endpoint
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Remote {
+    /// Remote type (e.g., "streamable-http")
+    #[serde(rename = "type")]
+    pub remote_type: String,
+
+    /// Remote URL
+    pub url: String,
+}
+
+/// Server metadata from registry
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ServerMeta {
+    /// Official registry metadata
+    #[serde(rename = "io.modelcontextprotocol.registry/official")]
+    pub official: OfficialMetadata,
+}
+
+/// Official registry metadata
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OfficialMetadata {
+    /// Publication status (e.g., "active")
+    pub status: String,
+
+    /// When the server was first published
+    #[serde(rename = "publishedAt")]
+    pub published_at: String,
+
+    /// When the server was last updated
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+
+    /// Whether this is the latest version
+    #[serde(rename = "isLatest")]
+    pub is_latest: bool,
+}
+
+/// Registry metadata (pagination)
 ///
-/// Provides information for navigating through paginated results.
+/// Uses cursor-based pagination for efficient result navigation.
 ///
 /// # Example
 /// ```ignore
-/// if let Some(pagination) = registry.pagination {
-///     let has_more = (pagination.offset + pagination.limit) < pagination.total;
-///     if has_more {
-///         // Load next page
+/// if let Some(metadata) = registry.metadata {
+///     if let Some(next_cursor) = metadata.next_cursor {
+///         // Load next page using cursor
 ///     }
 /// }
 /// ```
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Pagination {
-    /// Total number of servers available
-    pub total: usize,
+pub struct RegistryMetadata {
+    /// Cursor for next page of results
+    #[serde(rename = "nextCursor", skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 
-    /// Number of servers per page
-    pub limit: usize,
-
-    /// Number of servers skipped
-    pub offset: usize,
+    /// Number of servers in this response
+    pub count: usize,
 }
 
 /// Marketplace error types

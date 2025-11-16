@@ -43,7 +43,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::runtime::Handle;
 
-use crate::mcp::marketplace::{MarketplaceClient, McpServerListing, McpRegistry};
+use crate::mcp::marketplace::{MarketplaceClient, McpServerWrapper, McpRegistry};
 
 /// Async task result for server list fetch
 enum FetchResult {
@@ -67,7 +67,7 @@ pub struct MarketplaceView {
     runtime: Handle,
 
     /// Cached server listings
-    servers: Vec<McpServerListing>,
+    servers: Vec<McpServerWrapper>,
 
     /// Selected server index for details view
     selected_server: Option<usize>,
@@ -95,6 +95,9 @@ pub struct MarketplaceView {
 
     /// Servers per page
     servers_per_page: usize,
+
+    /// Next cursor for pagination (None = last page)
+    next_cursor: Option<String>,
 
     /// Receiver for async fetch results
     fetch_rx: mpsc::UnboundedReceiver<FetchResult>,
@@ -124,6 +127,7 @@ impl MarketplaceView {
             current_page: 0,
             total_servers: 0,
             servers_per_page: 20,
+            next_cursor: None,
             fetch_rx,
             fetch_tx,
         };
@@ -176,10 +180,12 @@ impl MarketplaceView {
             match result {
                 FetchResult::Success(registry) => {
                     self.servers = registry.servers;
-                    if let Some(pagination) = registry.pagination {
-                        self.total_servers = pagination.total;
+                    if let Some(metadata) = registry.metadata {
+                        self.total_servers = metadata.count;
+                        self.next_cursor = metadata.next_cursor;
                     } else {
                         self.total_servers = self.servers.len();
+                        self.next_cursor = None;
                     }
                     self.error_message = None;
 
@@ -313,14 +319,23 @@ impl MarketplaceView {
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
-                for (idx, server) in self.servers.iter().enumerate() {
+                for (idx, wrapper) in self.servers.iter().enumerate() {
+                    let server = &wrapper.server;
+                    let is_official = wrapper.meta.official.status == "active";
+
                     // Apply filters
-                    if self.show_official_only && !server.official {
+                    if self.show_official_only && !is_official {
                         continue;
                     }
 
+                    // Get package type from first package (if available)
+                    let package_type = server.packages.first()
+                        .map(|p| p.registry_type.as_str())
+                        .or_else(|| if !server.remotes.is_empty() { Some("remote") } else { None })
+                        .unwrap_or("unknown");
+
                     if let Some(ref filter) = self.package_type_filter {
-                        if &server.package_type != filter {
+                        if package_type != filter.as_str() {
                             continue;
                         }
                     }
@@ -344,12 +359,19 @@ impl MarketplaceView {
 
                     ui.horizontal(|ui| {
                         // Package type badge
-                        ui.label(format!("{} {}", icons::PACKAGE, server.package_type));
+                        ui.label(format!("{} {}", icons::PACKAGE, package_type));
 
                         // Official badge
-                        if server.official {
+                        if is_official {
                             ui.label(egui::RichText::new(format!("{} Official", icons::SEAL_CHECK))
                                 .color(egui::Color32::from_rgb(60, 150, 60)));
+                        }
+
+                        // Version
+                        if !server.version.is_empty() {
+                            ui.label(egui::RichText::new(format!("v{}", server.version))
+                                .size(11.0)
+                                .color(egui::Color32::from_rgb(100, 100, 100)));
                         }
                     });
 
@@ -384,7 +406,10 @@ impl MarketplaceView {
         ui.heading("Server Details");
 
         if let Some(idx) = self.selected_server {
-            if let Some(server) = self.servers.get(idx) {
+            if let Some(wrapper) = self.servers.get(idx) {
+                let server = &wrapper.server;
+                let is_official = wrapper.meta.official.status == "active";
+
                 ui.add_space(10.0);
 
                 ui.label(egui::RichText::new(&server.name).size(18.0).strong());
@@ -395,53 +420,64 @@ impl MarketplaceView {
                 ui.add_space(10.0);
 
                 // Metadata
-                ui.label(format!("{} Package: {}", icons::PACKAGE, server.package));
-                ui.label(format!("{} Type: {}", icons::TAG, server.package_type));
-                if let Some(version) = &server.version {
-                    ui.label(format!("{} Version: {}", icons::GIT_BRANCH, version));
+                if !server.version.is_empty() {
+                    ui.label(format!("{} Version: {}", icons::GIT_BRANCH, server.version));
                 }
-                if server.official {
+                if is_official {
                     ui.label(egui::RichText::new(format!("{} Official Anthropic Server", icons::SEAL_CHECK))
                         .color(egui::Color32::from_rgb(60, 150, 60)));
                 }
 
+                // Repository link
+                if !server.repository.url.is_empty() {
+                    ui.hyperlink_to(format!("{} View Repository", icons::LINK), &server.repository.url);
+                }
+
                 ui.add_space(10.0);
 
-                // Installation command
-                ui.label(egui::RichText::new("Installation Command:").strong());
-                ui.horizontal(|ui| {
-                    let install_cmd = format!("{} {}", server.command, server.args.join(" "));
-                    ui.code(&install_cmd);
+                // Package information
+                if !server.packages.is_empty() {
+                    ui.label(egui::RichText::new("Installation Packages:").strong());
+                    for package in &server.packages {
+                        ui.add_space(5.0);
+                        ui.label(format!("{} Type: {}", icons::PACKAGE, package.registry_type));
+                        ui.code(&package.identifier);
 
-                    if ui.button(format!("{} Copy", icons::CLIPBOARD_TEXT)).clicked() {
-                        ui.output_mut(|o| o.copied_text = install_cmd);
-                    }
-                });
-
-                // Environment variables
-                if !server.env.is_empty() {
-                    ui.add_space(10.0);
-                    ui.label(egui::RichText::new("Environment Variables:").strong());
-                    for (key, value) in &server.env {
-                        if value.is_empty() {
-                            ui.label(format!("{} = <set your value>", key));
-                        } else {
-                            ui.label(format!("{} = {}", key, value));
+                        // Environment variables for this package
+                        if !package.environment_variables.is_empty() {
+                            ui.add_space(5.0);
+                            ui.label(egui::RichText::new("Environment Variables:").strong());
+                            for env_var in &package.environment_variables {
+                                let secret_marker = if env_var.is_secret { " (secret)" } else { "" };
+                                ui.label(format!("• {} = <required>{}", env_var.name, secret_marker));
+                                if !env_var.description.is_empty() {
+                                    ui.label(
+                                        egui::RichText::new(format!("  {}", env_var.description))
+                                            .size(11.0)
+                                            .color(egui::Color32::from_rgb(120, 120, 120))
+                                    );
+                                }
+                            }
                         }
                     }
                 }
 
-                // Homepage link
-                if let Some(homepage) = &server.homepage {
+                // Remote endpoints
+                if !server.remotes.is_empty() {
                     ui.add_space(10.0);
-                    ui.hyperlink_to(format!("{} View Documentation", icons::LINK), homepage);
+                    ui.label(egui::RichText::new("Remote Endpoints:").strong());
+                    for remote in &server.remotes {
+                        ui.add_space(5.0);
+                        ui.label(format!("{} Type: {}", icons::GLOBE, remote.remote_type));
+                        ui.code(&remote.url);
+                    }
                 }
 
                 ui.add_space(20.0);
 
                 // Copy config button
                 if ui.button(format!("{} Copy Configuration Snippet", icons::CLIPBOARD_TEXT)).clicked() {
-                    let config = self.generate_config_snippet(server);
+                    let config = self.generate_config_snippet(wrapper);
                     ui.output_mut(|o| o.copied_text = config);
                 }
 
@@ -467,26 +503,57 @@ impl MarketplaceView {
     /// Generate MCP configuration snippet for a server
     ///
     /// Creates a JSON object matching the Rustbot MCP config format.
-    fn generate_config_snippet(&self, server: &McpServerListing) -> String {
+    fn generate_config_snippet(&self, wrapper: &McpServerWrapper) -> String {
+        let server = &wrapper.server;
+
+        // Extract command and args from first package or use remote URL
+        let (command, args) = if let Some(package) = server.packages.first() {
+            // For OCI packages, use docker
+            if package.registry_type == "oci" {
+                ("docker".to_string(), vec!["run".to_string(), package.identifier.clone()])
+            } else {
+                // For other packages, basic npx/uvx/etc
+                ("npx".to_string(), vec![package.identifier.clone()])
+            }
+        } else if let Some(remote) = server.remotes.first() {
+            ("mcp-remote".to_string(), vec![remote.url.clone()])
+        } else {
+            ("echo".to_string(), vec!["Configure this manually".to_string()])
+        };
+
+        // Extract environment variables
+        let env = server.packages.first()
+            .map(|p| p.environment_variables.iter()
+                .map(|ev| (ev.name.clone(), "<set_value>".to_string()))
+                .collect::<std::collections::HashMap<_, _>>())
+            .unwrap_or_default();
+
         serde_json::to_string_pretty(&serde_json::json!({
-            "id": server.name.to_lowercase().replace(' ', "-"),
+            "id": server.name.to_lowercase().replace('/', "-").replace(' ', "-"),
             "name": server.name,
             "description": server.description,
-            "command": server.command,
-            "args": server.args,
-            "env": server.env,
+            "command": command,
+            "args": args,
+            "env": env,
             "enabled": true,
         })).unwrap_or_default()
     }
 
     /// Get count of servers after filtering
     fn get_filtered_count(&self) -> usize {
-        self.servers.iter().filter(|server| {
-            if self.show_official_only && !server.official {
+        self.servers.iter().filter(|wrapper| {
+            let is_official = wrapper.meta.official.status == "active";
+            if self.show_official_only && !is_official {
                 return false;
             }
+
             if let Some(ref filter) = self.package_type_filter {
-                if &server.package_type != filter {
+                let package_type = wrapper.server.packages.first()
+                    .map(|p| p.registry_type.as_str())
+                    .or_else(|| if !wrapper.server.remotes.is_empty() { Some("remote") } else { None })
+                    .unwrap_or("unknown");
+
+                if package_type != filter.as_str() {
                     return false;
                 }
             }
