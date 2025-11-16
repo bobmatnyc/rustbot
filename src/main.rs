@@ -20,8 +20,9 @@ use std::collections::VecDeque;
 use tokio::sync::{broadcast, mpsc, Mutex};
 use std::path::PathBuf;
 use egui_phosphor::regular as icons;
-use ui::{AppView, ChatMessage, ContextTracker, MessageRole, SettingsView, SystemPrompts, TokenStats, VisualEvent};
+use ui::{AppView, ChatMessage, ContextTracker, MessageRole, PluginsView, SettingsView, SystemPrompts, TokenStats, VisualEvent};
 use ui::icon::create_window_icon;
+use mcp::manager::McpPluginManager;
 
 fn main() -> std::result::Result<(), eframe::Error> {
     // Initialize tracing for logging
@@ -150,6 +151,10 @@ struct RustbotApp {
     // Pending agent result receiver
     pending_agent_result: Option<mpsc::UnboundedReceiver<anyhow::Result<mpsc::UnboundedReceiver<String>>>>,
 
+    // MCP Plugin Manager and UI
+    mcp_manager: Arc<Mutex<McpPluginManager>>,
+    plugins_view: Option<PluginsView>,
+
     // Keep runtime for async operations
     runtime: Arc<tokio::runtime::Runtime>,
 }
@@ -198,6 +203,34 @@ impl RustbotApp {
 
         let api = api_builder.build().expect("Failed to build RustbotApi");
 
+        // Initialize MCP plugin manager with event bus
+        let mcp_manager = Arc::new(Mutex::new(McpPluginManager::with_event_bus(
+            Some(Arc::clone(&event_bus))
+        )));
+
+        // Load MCP configuration if available
+        let mcp_config_path = std::path::Path::new("mcp_config.json");
+        if mcp_config_path.exists() {
+            let mgr = Arc::clone(&mcp_manager);
+            runtime.block_on(async move {
+                if let Ok(mut manager) = mgr.try_lock() {
+                    match manager.load_config(mcp_config_path).await {
+                        Ok(_) => {
+                            tracing::info!("✓ Loaded MCP configuration from mcp_config.json");
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to load MCP configuration: {}", e);
+                        }
+                    }
+                }
+            });
+        } else {
+            tracing::info!("No mcp_config.json found, MCP plugins disabled");
+        }
+
+        // Create plugins view
+        let plugins_view = Some(PluginsView::new(Arc::clone(&mcp_manager)));
+
         Self {
             api: Arc::new(Mutex::new(api)),
             message_input: String::new(),
@@ -220,6 +253,8 @@ impl RustbotApp {
             event_history: VecDeque::with_capacity(50),
             show_event_visualizer: true, // Start with visualizer open for debugging
             pending_agent_result: None,
+            mcp_manager,
+            plugins_view,
             runtime,
         }
     }
@@ -670,7 +705,11 @@ impl eframe::App for RustbotApp {
                     }
                     EventKind::McpPluginEvent(plugin_event) => {
                         tracing::info!("MCP plugin event received: {:?}", plugin_event);
-                        // Future: Update UI to show MCP plugin status
+
+                        // Forward event to plugins view for display
+                        if let Some(plugins_view) = &mut self.plugins_view {
+                            plugins_view.handle_mcp_event(&plugin_event);
+                        }
                     }
                     EventKind::Test(msg) => {
                         tracing::info!("Test event received: {}", msg);
@@ -863,6 +902,20 @@ impl eframe::App for RustbotApp {
 
                         ui.add_space(5.0);
 
+                        ui.horizontal(|ui| {
+                            let plugins_button = ui.add(
+                                egui::SelectableLabel::new(
+                                    self.current_view == AppView::Plugins,
+                                    format!("{} Plugins", icons::PUZZLE_PIECE)
+                                )
+                            );
+                            if plugins_button.clicked() {
+                                self.current_view = AppView::Plugins;
+                            }
+                        });
+
+                        ui.add_space(5.0);
+
                         // Reload configuration button
                         ui.horizontal(|ui| {
                             if ui.button(format!("{} Reload Config", icons::ARROW_CLOCKWISE)).clicked() {
@@ -968,6 +1021,7 @@ impl eframe::App for RustbotApp {
                 match self.current_view {
                     AppView::Chat => self.render_chat_view(ui, ctx),
                     AppView::Settings => self.render_settings_view(ui),
+                    AppView::Plugins => self.render_plugins_view(ui, ctx),
                 }
             });
         });

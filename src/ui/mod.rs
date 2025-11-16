@@ -2,6 +2,7 @@
 // Contains all UI-related types, utilities, and views
 
 pub mod icon;
+pub mod plugins;
 pub mod types;
 pub mod views;
 
@@ -10,3 +11,5 @@ pub use types::{
     AppView, ChatMessage, ContextTracker, MessageRole,
     SettingsView, SystemPrompts, TokenStats, VisualEvent,
 };
+
+pub use plugins::PluginsView;

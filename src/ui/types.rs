@@ -16,6 +16,7 @@ pub struct VisualEvent {
 pub enum AppView {
     Chat,
     Settings,
+    Plugins,
 }
 
 /// Settings sub-view

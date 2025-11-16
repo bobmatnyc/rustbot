@@ -4,6 +4,7 @@
 use crate::ui::{MessageRole, SettingsView};
 use eframe::egui;
 use egui_phosphor::regular as icons;
+use std::sync::Arc;
 
 /// Extension trait to add view rendering methods to RustbotApp
 /// This allows us to define methods on RustbotApp from a separate module
@@ -184,7 +185,7 @@ impl crate::RustbotApp {
         // Input area with multi-line text box
         ui.horizontal(|ui| {
             let text_edit_width = ui.available_width() - 70.0;
-            let response = ui.add_sized(
+            let _response = ui.add_sized(
                 [text_edit_width, 80.0],
                 egui::TextEdit::multiline(&mut self.message_input)
                     .hint_text("Type your message here...\n\nPress Cmd+Enter to send")
@@ -441,6 +442,53 @@ impl crate::RustbotApp {
 
                 ui.add_space(20.0); // Bottom padding
             });
+    }
+
+    /// Render the plugins management view
+    ///
+    /// Displays all MCP plugins with management controls
+    ///
+    /// # Arguments
+    /// * `ui` - The egui UI context for rendering
+    /// * `ctx` - The egui Context for global state and repaints
+    pub fn render_plugins_view(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if let Some(plugins_view) = &mut self.plugins_view {
+            // Trigger async refresh
+            let manager = Arc::clone(&self.mcp_manager);
+            let has_plugins = {
+                let rt = Arc::clone(&self.runtime);
+                rt.block_on(async {
+                    if let Ok(mgr) = manager.try_lock() {
+                        mgr.plugin_count().await > 0
+                    } else {
+                        false
+                    }
+                })
+            };
+
+            // Refresh plugin list periodically
+            if has_plugins {
+                let manager_clone = Arc::clone(&self.mcp_manager);
+                let rt = Arc::clone(&self.runtime);
+                rt.spawn(async move {
+                    if let Ok(mgr) = manager_clone.try_lock() {
+                        // Just trigger a check, actual refresh happens in plugins_view.render()
+                        let _ = mgr.plugin_count().await;
+                    }
+                });
+            }
+
+            // Render the plugins view
+            plugins_view.render(ui, ctx);
+
+            // Request periodic repaints for auto-refresh
+            ctx.request_repaint_after(std::time::Duration::from_secs(2));
+        } else {
+            ui.vertical_centered(|ui| {
+                ui.add_space(50.0);
+                ui.label("Plugins view not initialized");
+            });
+        }
     }
 
     /// Render the agents management view
