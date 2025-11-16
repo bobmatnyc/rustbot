@@ -64,17 +64,44 @@ impl RustbotApi {
     /// Build tool definitions from all enabled specialist agents
     /// This should be called whenever agent configs change (enable/disable)
     fn build_tool_definitions(&self) -> Vec<ToolDefinition> {
-        ToolDefinition::from_agents(&self.agent_configs)
+        tracing::info!("🔍 [DEBUG] build_tool_definitions called with {} agent configs", self.agent_configs.len());
+
+        // 🔍 DEBUG: Log which configs are enabled specialists
+        for config in &self.agent_configs {
+            if config.enabled && !config.is_primary {
+                tracing::info!(
+                    "🔍 [DEBUG] Enabled specialist: id='{}', name='{}'",
+                    config.id,
+                    config.name
+                );
+            }
+        }
+
+        let tools = ToolDefinition::from_agents(&self.agent_configs);
+        tracing::info!("🔍 [DEBUG] build_tool_definitions returning {} tools", tools.len());
+        tools
     }
 
     /// Update the tool registry
     /// Call this when agents are enabled/disabled to rebuild the available tools
     pub fn update_tools(&mut self) {
+        tracing::info!("🔍 [DEBUG] update_tools called");
         self.available_tools = self.build_tool_definitions();
-        tracing::debug!(
-            "Tool registry updated: {} tools available",
+        tracing::info!(
+            "🔍 [DEBUG] Tool registry updated: {} tools available",
             self.available_tools.len()
         );
+
+        // 🔍 DEBUG: Log tool names
+        if !self.available_tools.is_empty() {
+            let tool_names: Vec<&str> = self.available_tools
+                .iter()
+                .map(|t| t.function.name.as_str())
+                .collect();
+            tracing::info!("🔍 [DEBUG] Tools after update: {:?}", tool_names);
+        } else {
+            tracing::warn!("🔍 [DEBUG] WARNING: No tools available after update!");
+        }
     }
 
     /// Get the current list of available tools
@@ -131,6 +158,36 @@ impl RustbotApi {
         let start_time = std::time::Instant::now();
         tracing::debug!("⏱️  [PERF] send_message started");
 
+        // 🔍 DEBUG: Check tool state at start of send_message
+        tracing::info!(
+            "🔍 [DEBUG] send_message called - available_tools.len() = {}, agent_configs.len() = {}, active_agent_id = '{}'",
+            self.available_tools.len(),
+            self.agent_configs.len(),
+            self.active_agent_id
+        );
+
+        // 🔍 DEBUG: Log all available tool names
+        if !self.available_tools.is_empty() {
+            let tool_names: Vec<&str> = self.available_tools
+                .iter()
+                .map(|t| t.function.name.as_str())
+                .collect();
+            tracing::info!("🔍 [DEBUG] Available tools: {:?}", tool_names);
+        } else {
+            tracing::warn!("🔍 [DEBUG] WARNING: available_tools is EMPTY!");
+        }
+
+        // 🔍 DEBUG: Log all agent config IDs and their isPrimary status
+        for config in &self.agent_configs {
+            tracing::info!(
+                "🔍 [DEBUG] Agent config: id='{}', name='{}', isPrimary={}, enabled={}",
+                config.id,
+                config.name,
+                config.is_primary,
+                config.enabled
+            );
+        }
+
         // Get context messages (last N messages) - WITHOUT adding current message yet
         // The agent will receive the current message separately and add it to context
         let context_messages: Vec<LlmMessage> = self.message_history
@@ -160,19 +217,42 @@ impl RustbotApi {
             .context("Active agent not found")?;
 
         // Determine if we should pass tools (only for primary agent)
+        tracing::info!("🔍 [DEBUG] Looking for agent config with id = '{}'", self.active_agent_id);
+
         let agent_config = self.agent_configs
             .iter()
             .find(|c| c.id == self.active_agent_id);
 
+        // 🔍 DEBUG: Log agent config lookup result
+        match agent_config {
+            Some(config) => {
+                tracing::info!(
+                    "🔍 [DEBUG] Found agent config: id='{}', isPrimary={}, enabled={}",
+                    config.id,
+                    config.is_primary,
+                    config.enabled
+                );
+            }
+            None => {
+                tracing::error!("🔍 [DEBUG] CRITICAL: No agent config found for active_agent_id='{}'!", self.active_agent_id);
+            }
+        }
+
         let tools = if let Some(config) = agent_config {
             if config.is_primary {
                 // Primary agent gets access to all enabled specialist tools
+                tracing::info!(
+                    "🔍 [DEBUG] Agent is PRIMARY, cloning {} tools",
+                    self.available_tools.len()
+                );
                 Some(self.available_tools.clone())
             } else {
                 // Specialist agents don't get tools
+                tracing::info!("🔍 [DEBUG] Agent is NOT primary, no tools");
                 None
             }
         } else {
+            tracing::warn!("🔍 [DEBUG] No agent config found, no tools will be passed");
             None
         };
 
@@ -185,6 +265,18 @@ impl RustbotApi {
             );
         }
 
+        // DIAGNOSTIC: Log tool passing status at INFO level for debugging
+        if let Some(ref tool_list) = tools {
+            tracing::info!(
+                "🔧 [API] Passing {} tools to agent '{}': {:?}",
+                tool_list.len(),
+                self.active_agent_id,
+                tool_list.iter().map(|t| &t.function.name).collect::<Vec<_>>()
+            );
+        } else {
+            tracing::info!("🔧 [API] No tools passed to agent '{}'", self.active_agent_id);
+        }
+
         // Process message through agent (non-blocking)
         tracing::debug!("⏱️  [PERF] Starting agent processing at {:?}", start_time.elapsed());
         let mut result_rx = agent.process_message_nonblocking(
@@ -195,7 +287,10 @@ impl RustbotApi {
 
         // Add user message to history AFTER sending to agent
         // This ensures the next message will have this one as context
-        self.message_history.push_back(LlmMessage::new("user", message));
+        let user_msg = LlmMessage::new("user", message);
+        tracing::debug!("📝 [HISTORY] Adding USER message - content_len: {}, total_history: {}",
+            user_msg.content.len(), self.message_history.len() + 1);
+        self.message_history.push_back(user_msg);
 
         // Trim history if needed
         while self.message_history.len() > self.max_history_size {
@@ -234,15 +329,34 @@ impl RustbotApi {
                 // The messages array from the agent includes: [...context, user_msg, assistant_with_tool_calls]
                 // We need to add the assistant message to our history BEFORE adding tool results
                 if let Some(assistant_msg) = messages.iter().rev().find(|m| m.role == "assistant") {
-                    tracing::debug!("Adding assistant message with {} tool calls to conversation history",
-                        assistant_msg.tool_calls.as_ref().map(|tc| tc.len()).unwrap_or(0));
-                    self.message_history.push_back(assistant_msg.clone());
+                    tracing::debug!("📝 [HISTORY] Adding ASSISTANT message with tool calls - content_len: {}, tool_calls: {}, total_history: {}",
+                        assistant_msg.content.len(),
+                        assistant_msg.tool_calls.as_ref().map(|tc| tc.len()).unwrap_or(0),
+                        self.message_history.len() + 1);
+
+                    // DEFENSIVE: Validate before adding
+                    if assistant_msg.content.is_empty() && assistant_msg.tool_calls.is_none() {
+                        tracing::error!("❌ [HISTORY] BLOCKED: Assistant message has EMPTY content AND no tool_calls!");
+                    } else {
+                        self.message_history.push_back(assistant_msg.clone());
+                    }
                 }
 
                 // Execute each tool call sequentially
                 for (idx, tool_call) in tool_calls.iter().enumerate() {
                     tracing::info!("Executing tool {}/{}: {} (ID: {})",
                         idx + 1, tool_calls.len(), tool_call.name, tool_call.id);
+
+                    // Publish tool execution status
+                    let event = Event::new(
+                        self.active_agent_id.clone(),
+                        "broadcast".to_string(),
+                        EventKind::AgentStatusChange {
+                            agent_id: self.active_agent_id.clone(),
+                            status: AgentStatus::ExecutingTool(tool_call.name.clone()),
+                        },
+                    );
+                    let _ = self.event_bus.publish(event);
 
                     let tool_start = std::time::Instant::now();
 
@@ -260,6 +374,14 @@ impl RustbotApi {
 
                     // CRITICAL FIX: Add actual tool result content to conversation history
                     // (Previously stored placeholder "Tool executed", now stores actual result for better context)
+                    tracing::debug!("📝 [HISTORY] Adding TOOL RESULT - tool_id: {}, result_len: {}, total_history: {}",
+                        tool_call.id, result.len(), self.message_history.len() + 1);
+
+                    // DEFENSIVE: Validate tool result has content
+                    if result.is_empty() {
+                        tracing::warn!("⚠️  [HISTORY] Tool result for {} is EMPTY - adding anyway (required for conversation flow)", tool_call.id);
+                    }
+
                     self.message_history.push_back(LlmMessage::tool_result(tool_call.id.clone(), result));
                 }
 
@@ -376,10 +498,19 @@ impl RustbotApi {
     /// Clear the message history
     /// This is the programmatic equivalent of the "Clear" button
     pub fn clear_history(&mut self) {
+        tracing::info!("🗑️  Clearing conversation history ({} messages)", self.message_history.len());
         self.message_history.clear();
 
-        // Note: Clear event could be added to EventKind if needed
-        // For now, just clear the local history
+        // Publish clear conversation event to notify all subscribers
+        let event = Event::new(
+            "api".to_string(),
+            "broadcast".to_string(),
+            EventKind::SystemCommand(crate::events::SystemCommand::ClearConversation),
+        );
+
+        if let Err(e) = self.event_bus.publish(event) {
+            tracing::warn!("Failed to publish clear conversation event: {:?}", e);
+        }
     }
 
     /// Get the current message history
@@ -417,12 +548,17 @@ impl RustbotApi {
     /// Add an assistant response to the message history
     /// This should be called after receiving the complete response from streaming
     pub fn add_assistant_response(&mut self, response: String) {
+        tracing::debug!("📝 [HISTORY] add_assistant_response called - response_len: {}, total_history: {}",
+            response.len(), self.message_history.len());
+
         // CRITICAL: Only add assistant message if it has content
         // Anthropic API rejects messages with empty content
         if !response.is_empty() {
+            tracing::debug!("📝 [HISTORY] Adding FINAL ASSISTANT response - content_len: {}, total_history: {}",
+                response.len(), self.message_history.len() + 1);
             self.message_history.push_back(LlmMessage::new("assistant", response));
         } else {
-            tracing::warn!("⚠️  Skipping empty assistant message in add_assistant_response");
+            tracing::warn!("⚠️  [HISTORY] BLOCKED: Skipping empty assistant message in add_assistant_response");
         }
 
         // Trim history if needed

@@ -38,6 +38,8 @@ When interacting with Claude Desktop, the following MCP tools are available:
 - **LLM Provider**: OpenRouter API (Claude Sonnet 4 default)
 
 ## Development Guidelines
+
+### General Practices
 - Use kuzu-memory enhance for all AI interactions
 - Store important decisions with kuzu-memory learn
 - Query context with kuzu-memory recall when needed
@@ -46,6 +48,40 @@ When interacting with Claude Desktop, the following MCP tools are available:
 - Update version files when releasing: `src/version.rs`, `Cargo.toml`, `VERSION_MANAGEMENT.md`
 - Use Phosphor icons instead of emojis for UI consistency
 - Maintain light theme color scheme for professional appearance
+
+### Development Workflow
+
+**IMPORTANT: Code vs Config Changes**
+- **Rust code (`.rs` files)**: Requires rebuild (`cargo build && ./target/debug/rustbot`)
+- **Agent configs (`.json` files)**: Requires restart only (Ctrl+C and rerun)
+- **Environment variables (`.env`)**: Requires restart only
+
+**Quick Commands:**
+```bash
+# Automated development (recommended)
+cargo watch -x run -w agents        # Auto-rebuild and restart
+
+# Manual workflow
+cargo build                          # Compile code changes
+./target/debug/rustbot               # Run application
+jq empty agents/presets/*.json       # Validate agent configs
+```
+
+**Common Workflows:**
+1. **Modifying code**: Edit `.rs` file → Save → `cargo build` → Run
+2. **Modifying agent config**: Edit `.json` → Validate with `jq` → Restart app (no rebuild)
+3. **Fast iteration**: Use `cargo watch -x run -w agents` for auto-reload on any change
+
+See `DEVELOPMENT.md` for comprehensive development guide.
+
+### Memory Instructions for AI Assistants
+
+When assisting with Rustbot development:
+- **Always remind**: Config changes only need restart, not rebuild
+- **Suggest cargo-watch**: For efficient development workflows
+- **Validate JSON**: Remind to run `jq empty <file>` after config changes
+- **Check session logs**: Review `docs/progress/` for recent context
+- **Document sessions**: Create progress logs for significant work
 
 ## Session Progress Tracking
 

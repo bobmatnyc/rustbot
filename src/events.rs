@@ -65,6 +65,7 @@ pub enum AgentStatus {
     Idle,
     Thinking,
     Responding,
+    ExecutingTool(String),  // Tool name being executed
     Error(String),
 }
 

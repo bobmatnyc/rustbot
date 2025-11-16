@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 const OPENROUTER_API_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4.5";
+const DEFAULT_MODEL: &str = "openai/gpt-4o";
 
 pub struct OpenRouterAdapter {
     client: Client,
@@ -46,30 +46,50 @@ impl LlmAdapter for OpenRouterAdapter {
         let start_time = std::time::Instant::now();
         tracing::debug!("⏱️  [LLM] stream_chat starting");
 
-        // Handle web search if enabled (OpenRouter-specific feature)
-        let provider = if request.web_search == Some(true) {
-            Some(ProviderConfig {
-                allow_fallbacks: Some(false),
-                // TODO: Add web_search tool to provider config
-            })
+        let model = request.model.unwrap_or_else(|| DEFAULT_MODEL.to_string());
+        let is_anthropic = model.starts_with("anthropic/claude");
+
+        // Convert messages to appropriate format based on model
+        let messages = if is_anthropic {
+            serialize_messages_for_anthropic_value(&request.messages)?
+        } else {
+            // OpenAI models - use standard format with tool_calls
+            serialize_messages_for_openai_value(&request.messages)?
+        };
+
+        // Configure web search if enabled (OpenRouter-specific feature)
+        // OpenRouter expects plugins array: [{"id": "web", "max_results": 5}]
+        let plugins = if request.web_search == Some(true) {
+            Some(vec![WebPlugin {
+                id: "web".to_string(),  // Required value for web search
+                max_results: Some(5),   // Default is 5 results per search
+            }])
         } else {
             None
         };
 
         let api_request = ApiRequest {
-            model: request.model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
-            messages: request.messages,
+            model,
+            messages,
             stream: true,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
             tools: request.tools,  // Pass custom tools from request
             tool_choice: request.tool_choice,  // Pass tool_choice from request
-            provider,
+            plugins,
+            provider: None,  // Not using provider-specific config anymore
         };
 
         // DEBUG: Log the serialized request to see what's actually being sent
+        tracing::debug!("🔍 [API] Sending request to model: {} (is_anthropic: {})", api_request.model, is_anthropic);
+        tracing::debug!("🔍 [API] Sending request with {} messages", api_request.messages.len());
+        for (idx, msg) in api_request.messages.iter().enumerate() {
+            if let Ok(json) = serde_json::to_string(msg) {
+                tracing::debug!("🔍 [API] Message[{}]: {}", idx, json);
+            }
+        }
         if let Ok(json) = serde_json::to_string_pretty(&api_request) {
-            tracing::debug!("🔍 Sending API request:\n{}", json);
+            tracing::debug!("🔍 [API] Full request JSON:\n{}", json);
         }
 
         tracing::debug!("⏱️  [LLM] Sending stream request at {:?}", start_time.elapsed());
@@ -153,25 +173,55 @@ impl LlmAdapter for OpenRouterAdapter {
         let start_time = std::time::Instant::now();
         tracing::debug!("⏱️  [LLM] complete_chat starting");
 
-        // Handle web search if enabled (OpenRouter-specific feature)
-        let provider = if request.web_search == Some(true) {
-            Some(ProviderConfig {
-                allow_fallbacks: Some(false),
-            })
+        let model = request.model.unwrap_or_else(|| DEFAULT_MODEL.to_string());
+        let is_anthropic = model.starts_with("anthropic/claude");
+
+        // Convert messages to appropriate format based on model
+        let messages = if is_anthropic {
+            serialize_messages_for_anthropic_value(&request.messages)?
+        } else {
+            serialize_messages_for_openai_value(&request.messages)?
+        };
+
+        // Configure web search if enabled (OpenRouter-specific feature)
+        // OpenRouter expects plugins array: [{"id": "web", "max_results": 5}]
+        let plugins = if request.web_search == Some(true) {
+            Some(vec![WebPlugin {
+                id: "web".to_string(),  // Required value for web search
+                max_results: Some(5),   // Default is 5 results per search
+            }])
         } else {
             None
         };
 
         let api_request = ApiRequest {
-            model: request.model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
-            messages: request.messages,
+            model,
+            messages,
             stream: false,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
             tools: request.tools,  // Pass custom tools from request
             tool_choice: request.tool_choice,  // Pass tool_choice from request
-            provider,
+            plugins,
+            provider: None,  // Not using provider-specific config anymore
         };
+
+        // Log detailed tool information for debugging
+        if let Some(ref tools) = api_request.tools {
+            tracing::info!("🔧 [LLM] Sending {} tools to API:", tools.len());
+            for tool in tools {
+                tracing::info!("   - Tool: {}", tool.function.name);
+                tracing::info!("     Description: {}", tool.function.description);
+            }
+        } else {
+            tracing::info!("🔧 [LLM] No tools in request");
+        }
+
+        if let Some(ref choice) = api_request.tool_choice {
+            tracing::info!("🎯 [LLM] tool_choice: {:?}", choice);
+        } else {
+            tracing::info!("🎯 [LLM] tool_choice: auto (default)");
+        }
 
         tracing::debug!("⏱️  [LLM] Sending request at {:?}", start_time.elapsed());
         let response = self.send_request(&api_request).await?;
@@ -203,9 +253,11 @@ impl LlmAdapter for OpenRouterAdapter {
 
         // Convert OpenRouter API format to our internal format
         let tool_calls = choice.message.tool_calls.as_ref().map(|calls| {
+            tracing::info!("📞 [LLM] Response contains {} tool call(s)", calls.len());
             calls
                 .iter()
                 .filter_map(|api_call| {
+                    tracing::info!("   - Tool call: {} (id: {})", api_call.function.name, api_call.id);
                     // Parse the JSON arguments string into a Value
                     match serde_json::from_str(&api_call.function.arguments) {
                         Ok(args) => Some(ToolCall {
@@ -226,6 +278,10 @@ impl LlmAdapter for OpenRouterAdapter {
                 .collect()
         });
 
+        if tool_calls.is_none() {
+            tracing::info!("📞 [LLM] Response contains NO tool calls - LLM responded directly");
+        }
+
         Ok(LlmResponse {
             content: choice.message.content.clone().unwrap_or_default(),
             tool_calls,
@@ -242,8 +298,10 @@ impl LlmAdapter for OpenRouterAdapter {
 #[derive(Debug, Serialize)]
 struct ApiRequest {
     model: String,
-    #[serde(serialize_with = "serialize_messages_for_anthropic")]
-    messages: Vec<Message>,
+    // Messages are now serialized based on model type
+    // - Anthropic models (claude-*): Use content blocks format
+    // - OpenAI models (gpt-*, o1-*): Use standard OpenAI format with tool_calls
+    messages: Vec<serde_json::Value>,
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
@@ -258,12 +316,142 @@ struct ApiRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<String>,
 
-    /// Provider-specific configuration (e.g., for web_search)
+    /// Web search plugin (OpenRouter feature)
+    /// Format: [{"id": "web", "max_results": 5}]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    plugins: Option<Vec<WebPlugin>>,
+
+    /// Provider-specific configuration (e.g., for fallbacks)
     #[serde(skip_serializing_if = "Option::is_none")]
     provider: Option<ProviderConfig>,
 }
 
-/// Custom serializer for messages to handle Anthropic's format
+/// Serialize messages for OpenAI models (GPT-4o, o1, etc.)
+///
+/// OpenAI format uses standard message structure with:
+/// - Assistant messages with tool calls: `tool_calls` array with type="function"
+/// - Tool result messages: role="tool" with `tool_call_id`
+fn serialize_messages_for_openai_value(messages: &[Message]) -> Result<Vec<serde_json::Value>> {
+    messages.iter().map(|msg| {
+        // Convert our internal Message format to OpenAI API format
+        let mut json = serde_json::json!({
+            "role": msg.role,
+            "content": msg.content,
+        });
+
+        // Add tool_calls if present (for assistant messages)
+        // OpenAI requires each tool call to have type="function"
+        if let Some(tool_calls) = &msg.tool_calls {
+            let openai_tool_calls: Vec<serde_json::Value> = tool_calls.iter().map(|tc| {
+                serde_json::json!({
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.name,
+                        "arguments": serde_json::to_string(&tc.arguments).unwrap_or_default()
+                    }
+                })
+            }).collect();
+            json["tool_calls"] = serde_json::Value::Array(openai_tool_calls);
+        }
+
+        // Add tool_call_id if present (for tool result messages)
+        if let Some(tool_call_id) = &msg.tool_call_id {
+            json["tool_call_id"] = serde_json::Value::String(tool_call_id.clone());
+        }
+
+        Ok(json)
+    }).collect()
+}
+
+/// Serialize messages for Anthropic models (Claude)
+///
+/// Returns a Result with Vec<serde_json::Value> for consistency with OpenAI serializer
+fn serialize_messages_for_anthropic_value(messages: &[Message]) -> Result<Vec<serde_json::Value>> {
+    let mut result = Vec::new();
+
+    for (idx, message) in messages.iter().enumerate() {
+        let value = match message.role.as_str() {
+            "tool" => {
+                // Tool result message - convert to Anthropic's format
+                let tool_use_id = message.tool_call_id.as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("tool message missing tool_call_id"))?;
+
+                if message.content.is_empty() {
+                    anyhow::bail!("Tool result message {} has empty content (tool_use_id: {})", idx, tool_use_id);
+                }
+
+                serde_json::json!({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": message.content
+                    }]
+                })
+            }
+            "assistant" if message.tool_calls.is_some() => {
+                // Assistant message with tool calls - convert to content blocks
+                let mut content_blocks = Vec::new();
+
+                // Add text content if present
+                if !message.content.is_empty() {
+                    content_blocks.push(serde_json::json!({
+                        "type": "text",
+                        "text": message.content
+                    }));
+                }
+
+                // Add tool_use blocks
+                if let Some(tool_calls) = &message.tool_calls {
+                    for tool_call in tool_calls {
+                        content_blocks.push(serde_json::json!({
+                            "type": "tool_use",
+                            "id": tool_call.id,
+                            "name": tool_call.name,
+                            "input": tool_call.arguments
+                        }));
+                    }
+                }
+
+                if content_blocks.is_empty() {
+                    anyhow::bail!("Assistant message {} with tool_calls generated no content blocks", idx);
+                }
+
+                serde_json::json!({
+                    "role": "assistant",
+                    "content": content_blocks
+                })
+            }
+            "assistant" => {
+                // Regular assistant message
+                if message.content.is_empty() {
+                    anyhow::bail!("Assistant message {} has empty content", idx);
+                }
+                serde_json::json!({
+                    "role": "assistant",
+                    "content": message.content
+                })
+            }
+            _ => {
+                // User, system, or other messages
+                if message.content.is_empty() {
+                    anyhow::bail!("Message {} (role: {}) has empty content", idx, message.role);
+                }
+                serde_json::json!({
+                    "role": message.role,
+                    "content": message.content
+                })
+            }
+        };
+
+        result.push(value);
+    }
+
+    Ok(result)
+}
+
+/// Custom serializer for messages to handle Anthropic's format (DEPRECATED - kept for reference)
 ///
 /// **Problem**: Anthropic API has a different message format than OpenAI:
 /// - OpenAI: Uses `tool_calls` array on assistant messages, `tool_call_id` on tool messages
@@ -468,10 +656,13 @@ where
     seq.end()
 }
 
+/// Web search plugin configuration (OpenRouter feature)
+/// OpenRouter uses a plugins array format: [{"id": "web", "max_results": 5}]
 #[derive(Debug, Serialize)]
-struct WebSearchTool {
-    #[serde(rename = "type")]
-    tool_type: String,
+struct WebPlugin {
+    id: String,  // Must be "web" for web search
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_results: Option<u32>,  // default is 5
 }
 
 #[derive(Debug, Serialize)]
@@ -579,15 +770,19 @@ mod tests {
             "4".to_string(),
         ));
 
+        // Serialize messages to Anthropic format
+        let messages_json = serialize_messages_for_anthropic_value(&messages).unwrap();
+
         // Serialize to JSON
         let api_request = ApiRequest {
             model: "anthropic/claude-sonnet-4.5".to_string(),
-            messages,
+            messages: messages_json,
             stream: false,
             temperature: None,
             max_tokens: None,
             tools: None,
             tool_choice: None,
+            plugins: None,
             provider: None,
         };
 
@@ -642,15 +837,19 @@ mod tests {
             "Weather in NYC: 72°F, sunny".to_string(),
         ));
 
+        // Serialize messages to Anthropic format
+        let messages_json = serialize_messages_for_anthropic_value(&messages).unwrap();
+
         // Create API request
         let api_request = ApiRequest {
             model: "anthropic/claude-sonnet-4.5".to_string(),
-            messages,
+            messages: messages_json,
             stream: false,
             temperature: None,
             max_tokens: None,
             tools: None,
             tool_choice: None,
+            plugins: None,
             provider: None,
         };
 
@@ -848,18 +1047,32 @@ mod tests {
             String::new(),  // ← Empty content!
         ));
 
-        let api_request = ApiRequest {
-            model: "anthropic/claude-sonnet-4.5".to_string(),
-            messages,
-            stream: false,
-            temperature: None,
-            max_tokens: None,
-            tools: None,
-            tool_choice: None,
-            provider: None,
+        // Serialization should fail when converting to Anthropic format
+        let result = serialize_messages_for_anthropic_value(&messages);
+
+        // Create API request (this will only be reached if serialization succeeds)
+        let api_request = if let Ok(messages_json) = result {
+            ApiRequest {
+                model: "anthropic/claude-sonnet-4.5".to_string(),
+                messages: messages_json,
+                stream: false,
+                temperature: None,
+                max_tokens: None,
+                tools: None,
+                tool_choice: None,
+                plugins: None,
+                provider: None,
+            }
+        } else {
+            // If serialization failed (as expected), test passes
+            assert!(result.is_err(), "Empty tool result should be rejected during serialization");
+            let error_msg = result.unwrap_err().to_string();
+            assert!(error_msg.contains("empty content"),
+                "Error should mention empty content, got: {}", error_msg);
+            return;
         };
 
-        // Serialization should fail with descriptive error
+        // If we got here, serialization didn't fail as expected - final JSON check
         let result = serde_json::to_value(&api_request);
         assert!(result.is_err(), "Empty tool result should be rejected");
 
@@ -875,18 +1088,32 @@ mod tests {
 
         messages.push(Message::new("user", ""));  // ← Empty user message!
 
-        let api_request = ApiRequest {
-            model: "anthropic/claude-sonnet-4.5".to_string(),
-            messages,
-            stream: false,
-            temperature: None,
-            max_tokens: None,
-            tools: None,
-            tool_choice: None,
-            provider: None,
+        // Serialization should fail when converting to Anthropic format
+        let result = serialize_messages_for_anthropic_value(&messages);
+
+        // Create API request (this will only be reached if serialization succeeds)
+        let api_request = if let Ok(messages_json) = result {
+            ApiRequest {
+                model: "anthropic/claude-sonnet-4.5".to_string(),
+                messages: messages_json,
+                stream: false,
+                temperature: None,
+                max_tokens: None,
+                tools: None,
+                tool_choice: None,
+                plugins: None,
+                provider: None,
+            }
+        } else {
+            // If serialization failed (as expected), test passes
+            assert!(result.is_err(), "Empty message should be rejected during serialization");
+            let error_msg = result.unwrap_err().to_string();
+            assert!(error_msg.contains("empty content"),
+                "Error should mention empty content, got: {}", error_msg);
+            return;
         };
 
-        // Serialization should fail
+        // If we got here, serialization didn't fail as expected - final JSON check
         let result = serde_json::to_value(&api_request);
         assert!(result.is_err(), "Empty message should be rejected");
 

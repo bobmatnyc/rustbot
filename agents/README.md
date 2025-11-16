@@ -330,6 +330,188 @@ Use for: In-depth analysis, academic research, fact synthesis
 3. Lower temperature for more deterministic output
 4. For Ollama: Check local resources (CPU/RAM)
 
+## Development Workflow
+
+### Modifying Agent Configurations
+
+Agent configs are loaded at application startup. Changes require **restart only** (no rebuild).
+
+#### Quick Iteration Workflow
+
+1. **Edit agent configuration:**
+   ```bash
+   vim agents/presets/assistant.json
+   ```
+
+2. **Validate JSON syntax:**
+   ```bash
+   jq empty agents/presets/assistant.json
+   ```
+
+   No output = valid. Errors displayed if invalid.
+
+3. **Restart application:**
+   - **Automated (cargo-watch)**: `cargo watch -x run -w agents`
+     - Detects config changes automatically
+     - Restarts application on save
+   - **Manual**: Ctrl+C then rerun `./target/debug/rustbot`
+
+**Important**: Config changes do NOT require code rebuild. Just restart the app.
+
+#### Validation Commands
+
+**Validate single file:**
+```bash
+jq empty agents/presets/assistant.json
+```
+
+**Validate all configs:**
+```bash
+jq empty agents/presets/*.json
+```
+
+**Pretty-print config:**
+```bash
+jq . agents/presets/assistant.json
+```
+
+**Extract specific field:**
+```bash
+jq '.model' agents/presets/web_search.json
+jq '.parameters.temperature' agents/presets/assistant.json
+```
+
+#### Common JSON Errors
+
+```bash
+# Missing comma between fields
+{
+  "name": "assistant"   # ERROR: Missing comma
+  "model": "claude"
+}
+
+# Trailing comma after last field
+{
+  "name": "assistant",
+  "model": "claude",    # ERROR: Trailing comma
+}
+
+# Unescaped quotes in strings
+{
+  "instruction": "Say "hello""  # ERROR: Use \"hello\" or 'hello'
+}
+```
+
+#### Config Validation on Load
+
+Rustbot validates configs at startup and logs errors:
+
+```bash
+# Enable debug logging to see validation details
+RUST_LOG=debug ./target/debug/rustbot
+
+# Look for messages like:
+# ERROR: Failed to parse agent config: agents/presets/assistant.json
+# WARN: Agent 'assistant' disabled, skipping
+# INFO: Loaded 2 agents successfully
+```
+
+### Automated Development Setup
+
+For efficient agent configuration development:
+
+```bash
+# Install cargo-watch (one-time)
+cargo install cargo-watch
+
+# Watch agent configs AND Rust code
+cargo watch -x run -w agents -w src
+
+# Watch only agent configs (no code rebuild)
+cargo watch -x run -w agents
+```
+
+Changes to agent configs trigger automatic restart without full rebuild.
+
+### Best Practices
+
+1. **Always validate before testing:**
+   ```bash
+   jq empty agents/presets/*.json && ./target/debug/rustbot
+   ```
+
+2. **Use version control:**
+   - Commit working configs before experiments
+   - Create branches for major agent changes
+   ```bash
+   git checkout -b agent/web-search-optimization
+   vim agents/presets/web_search.json
+   git commit -am "config: Optimize web search agent temperature"
+   ```
+
+3. **Test incrementally:**
+   - Change one parameter at a time
+   - Restart and verify behavior
+   - Document what works in commit messages
+
+4. **Document custom agents:**
+   - Add clear descriptions to `description` field
+   - Use meaningful `tags` in metadata
+   - Document use cases in this README
+
+### Troubleshooting
+
+#### Config Changes Not Applied
+
+**Symptom**: Modified config but behavior unchanged.
+
+**Cause**: Application still running with old config in memory.
+
+**Solution**:
+```bash
+# Kill application completely (Ctrl+C)
+# Restart to load new config
+./target/debug/rustbot
+
+# Or use cargo-watch for automatic restarts
+cargo watch -x run -w agents
+```
+
+#### JSON Parse Error
+
+**Symptom**: Agent not loading, error in console.
+
+**Solution**:
+```bash
+# Validate JSON syntax
+jq empty agents/presets/assistant.json
+
+# Fix common issues:
+# - Missing/extra commas
+# - Unmatched quotes, braces, brackets
+# - Invalid escape sequences
+```
+
+#### Environment Variable Not Resolved
+
+**Symptom**: API key shows as `${OPENROUTER_API_KEY}` in logs.
+
+**Solution**:
+```bash
+# Check environment variable
+echo $OPENROUTER_API_KEY
+
+# Set if missing
+export OPENROUTER_API_KEY="your-key-here"
+
+# Or add to .env file
+echo "OPENROUTER_API_KEY=your-key-here" >> .env
+
+# Restart application
+```
+
+See `DEVELOPMENT.md` for comprehensive development workflows.
+
 ## Validation
 
 Validate your agent configuration against the schema:

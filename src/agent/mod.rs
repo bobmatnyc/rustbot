@@ -84,7 +84,7 @@ impl AgentConfig {
             name,
             instructions: String::new(),
             personality: None,
-            model: "anthropic/claude-sonnet-4.5".to_string(),
+            model: "openai/gpt-4o".to_string(),
             enabled: true,
             is_primary: false,  // Default to specialist agent
             web_search_enabled: false,
@@ -98,7 +98,7 @@ impl AgentConfig {
             name: "Assistant".to_string(),
             instructions: Self::build_assistant_instructions(),
             personality: Some("Be concise, friendly, and professional.".to_string()),
-            model: "anthropic/claude-sonnet-4.5".to_string(),
+            model: "openai/gpt-4o".to_string(),
             enabled: true,
             is_primary: true,  // Assistant is the primary agent
             web_search_enabled: false,
@@ -608,7 +608,7 @@ mod tests {
         let config = AgentConfig::default_assistant();
         assert_eq!(config.id, "assistant");
         assert_eq!(config.name, "Assistant");
-        assert_eq!(config.model, "anthropic/claude-sonnet-4.5");
+        assert_eq!(config.model, "openai/gpt-4o");
         assert!(config.enabled);
     }
 

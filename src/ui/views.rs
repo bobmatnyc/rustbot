@@ -65,8 +65,11 @@ impl crate::RustbotApp {
 
                             // Copy button for assistant messages (only if message has content)
                             if msg.role == MessageRole::Assistant && !msg.content.is_empty() {
-                                if ui.button(format!("{} Copy", icons::CLIPBOARD)).clicked() {
-                                    ui.output_mut(|o| o.copied_text = msg.content.clone());
+                                if ui.button(icons::CLIPBOARD_TEXT)
+                                    .on_hover_text("Copy message to clipboard")
+                                    .clicked()
+                                {
+                                    ui.ctx().copy_text(msg.content.clone());
                                 }
                             }
 
@@ -103,8 +106,14 @@ impl crate::RustbotApp {
                                     );
                                 }
 
+                                // Show current activity or default "Thinking..." message
+                                let status_text = self.current_activity
+                                    .as_ref()
+                                    .map(|s| s.as_str())
+                                    .unwrap_or("Thinking...");
+
                                 ui.label(
-                                    egui::RichText::new("Thinking...")
+                                    egui::RichText::new(status_text)
                                         .color(egui::Color32::from_rgb(150, 150, 150))
                                         .italics(),
                                 );
@@ -618,6 +627,16 @@ impl crate::RustbotApp {
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(
                                     &mut config.model,
+                                    "openai/gpt-4o".to_string(),
+                                    "GPT-4o (Default)",
+                                );
+                                ui.selectable_value(
+                                    &mut config.model,
+                                    "anthropic/claude-opus-4".to_string(),
+                                    "Claude Opus 4",
+                                );
+                                ui.selectable_value(
+                                    &mut config.model,
                                     "anthropic/claude-sonnet-4.5".to_string(),
                                     "Claude Sonnet 4.5",
                                 );
@@ -625,11 +644,6 @@ impl crate::RustbotApp {
                                     &mut config.model,
                                     "anthropic/claude-sonnet-4".to_string(),
                                     "Claude Sonnet 4",
-                                );
-                                ui.selectable_value(
-                                    &mut config.model,
-                                    "anthropic/claude-opus-4".to_string(),
-                                    "Claude Opus 4",
                                 );
                                 ui.selectable_value(
                                     &mut config.model,

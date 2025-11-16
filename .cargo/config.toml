@@ -1,0 +1,74 @@
+# Rustbot Cargo Configuration
+# Convenience aliases for common development workflows
+
+[alias]
+# Development workflows
+dev = "watch -x run"                              # Watch Rust code, auto-rebuild on change
+dev-all = "watch -x run -w agents -w .env"       # Watch code + configs + environment
+dev-clear = "watch -c -x run -w agents"          # Clear console on each rebuild
+
+# Validation and quality checks
+validate = "clippy -- -D warnings"               # Strict linting (treat warnings as errors)
+validate-all = "clippy --all-targets -- -D warnings"  # Lint all targets
+check-json = "!jq empty agents/presets/*.json"   # Validate all agent JSON configs
+
+# Testing
+test-all = "test --all-features"                 # Run all tests with all features
+test-quiet = "test --quiet"                      # Run tests with minimal output
+test-watch = "watch -x 'test --quiet'"           # Auto-run tests on code changes
+
+# Building
+build-rel = "build --release"                    # Release build with optimizations
+build-fast = "build"                             # Fast debug build
+
+# Cleaning
+clean-all = "clean"                              # Remove all build artifacts
+clean-target = "clean --target debug"            # Clean only debug builds
+
+# Running
+run-debug = "run"                                # Run with debug logging
+run-trace = "run --features trace"               # Run with trace logging (if feature exists)
+run-release = "run --release"                    # Run optimized release build
+
+# Combined workflows
+quick = "build && run"                           # Build and run (sequential)
+full-check = "test && clippy -- -D warnings"     # Test and lint
+
+# Documentation
+doc-open = "doc --open"                          # Generate and open documentation
+doc-all = "doc --all --no-deps --open"          # Document all crates, skip dependencies
+
+# Dependency management
+update-deps = "update"                           # Update dependencies
+outdated = "outdated"                            # Check for outdated dependencies (requires cargo-outdated)
+
+[build]
+# Parallel compilation
+jobs = 4  # Adjust based on CPU cores (default is usually optimal)
+
+# Incremental compilation (enabled by default for debug builds)
+# Speeds up subsequent builds by reusing previous compilation results
+incremental = true
+
+[target.x86_64-apple-darwin]
+# macOS-specific optimizations
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]  # Use LLD linker if available for faster linking
+
+[profile.dev]
+# Debug profile optimizations
+opt-level = 0          # No optimizations for fast compilation
+debug = true           # Include debug symbols
+split-debuginfo = "unpacked"  # Faster debug builds on macOS
+incremental = true     # Enable incremental compilation
+
+[profile.release]
+# Release profile optimizations
+opt-level = 3          # Maximum optimizations
+debug = false          # No debug symbols
+lto = "thin"           # Thin Link Time Optimization (good balance)
+codegen-units = 1      # Better optimization, slower compile
+strip = true           # Strip symbols from binary (smaller size)
+
+[profile.dev.package."*"]
+# Optimize dependencies in debug mode for better runtime performance
+opt-level = 2          # Optimize dependencies even in debug builds
