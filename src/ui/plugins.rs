@@ -24,6 +24,7 @@ use egui_phosphor::regular as icons;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::runtime::Handle;
 
 use crate::mcp::manager::McpPluginManager;
 use crate::mcp::plugin::{PluginMetadata, PluginState};
@@ -39,6 +40,9 @@ use crate::events::{Event, EventBus, EventKind, McpPluginEvent, PluginHealthStat
 pub struct PluginsView {
     /// MCP plugin manager (shared with main app)
     mcp_manager: Arc<Mutex<McpPluginManager>>,
+
+    /// Tokio runtime handle for spawning async tasks from UI thread
+    runtime: Handle,
 
     /// Cached plugin list (updated via refresh)
     plugins: Vec<PluginMetadata>,
@@ -61,9 +65,11 @@ impl PluginsView {
     ///
     /// # Arguments
     /// * `mcp_manager` - Shared reference to plugin manager
-    pub fn new(mcp_manager: Arc<Mutex<McpPluginManager>>) -> Self {
+    /// * `runtime` - Tokio runtime handle for spawning async tasks
+    pub fn new(mcp_manager: Arc<Mutex<McpPluginManager>>, runtime: Handle) -> Self {
         Self {
             mcp_manager,
+            runtime,
             plugins: Vec::new(),
             selected_plugin: None,
             recent_events: VecDeque::with_capacity(50),
@@ -483,7 +489,7 @@ impl PluginsView {
     fn trigger_refresh(&self, ctx: &egui::Context) {
         let ctx_clone = ctx.clone();
 
-        tokio::spawn(async move {
+        self.runtime.spawn(async move {
             // Refresh will happen on next render
             ctx_clone.request_repaint();
         });
@@ -495,7 +501,7 @@ impl PluginsView {
         let id = plugin_id.to_string();
         let ctx_clone = ctx.clone();
 
-        tokio::spawn(async move {
+        self.runtime.spawn(async move {
             let mut mgr = manager.lock().await;
             match mgr.start_plugin(&id).await {
                 Ok(_) => {
@@ -515,7 +521,7 @@ impl PluginsView {
         let id = plugin_id.to_string();
         let ctx_clone = ctx.clone();
 
-        tokio::spawn(async move {
+        self.runtime.spawn(async move {
             let mut mgr = manager.lock().await;
             match mgr.stop_plugin(&id).await {
                 Ok(_) => {
@@ -540,7 +546,7 @@ impl PluginsView {
         let manager = Arc::clone(&self.mcp_manager);
         let ctx_clone = ctx.clone();
 
-        tokio::spawn(async move {
+        self.runtime.spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
             let mut mgr = manager.lock().await;
@@ -560,7 +566,7 @@ impl PluginsView {
     fn reload_config(&self, ctx: &egui::Context) {
         let ctx_clone = ctx.clone();
 
-        tokio::spawn(async move {
+        self.runtime.spawn(async move {
             // TODO: Implement config hot-reload
             // For now, just log that it was requested
             tracing::info!("Config reload requested (not yet implemented)");

@@ -228,8 +228,11 @@ impl RustbotApp {
             tracing::info!("No mcp_config.json found, MCP plugins disabled");
         }
 
-        // Create plugins view
-        let plugins_view = Some(PluginsView::new(Arc::clone(&mcp_manager)));
+        // Create plugins view with runtime handle
+        let plugins_view = Some(PluginsView::new(
+            Arc::clone(&mcp_manager),
+            runtime.handle().clone()
+        ));
 
         Self {
             api: Arc::new(Mutex::new(api)),
