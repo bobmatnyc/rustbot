@@ -9,6 +9,7 @@ pub mod api;
 pub mod error;
 pub mod events;
 pub mod llm;
+pub mod mcp;  // MCP (Model Context Protocol) plugin system
 pub mod tool_executor;
 pub mod version;
 

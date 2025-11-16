@@ -1,0 +1,68 @@
+{
+  "mcp_plugins": {
+    "local_servers": [
+      {
+        "id": "filesystem",
+        "name": "Filesystem Access",
+        "description": "Access and manipulate files in allowed directories",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "/Users/masa/Projects"
+        ],
+        "env": {},
+        "enabled": false,
+        "auto_restart": true,
+        "timeout": 60
+      },
+      {
+        "id": "sqlite",
+        "name": "SQLite Database",
+        "description": "Query and manage SQLite databases",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-sqlite",
+          "/Users/masa/Projects/rustbot/rustbot.db"
+        ],
+        "env": {},
+        "enabled": false,
+        "auto_restart": true,
+        "timeout": 60
+      },
+      {
+        "id": "git",
+        "name": "Git Repository",
+        "description": "Read and search Git repositories",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-git",
+          "/Users/masa/Projects/rustbot"
+        ],
+        "env": {},
+        "enabled": false,
+        "auto_restart": true,
+        "timeout": 60
+      },
+      {
+        "id": "github",
+        "name": "GitHub Integration",
+        "description": "Manage GitHub repositories, issues, and PRs",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-github"
+        ],
+        "env": {
+          "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+        },
+        "enabled": false,
+        "auto_restart": true,
+        "timeout": 60
+      }
+    ],
+    "cloud_services": []
+  }
+}

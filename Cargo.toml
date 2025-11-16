@@ -38,6 +38,9 @@ egui-phosphor = "0.9"
 image = "0.25"
 egui_graphs = "0.28"
 
+# MCP (Model Context Protocol) support - Phase 1: Foundation
+# Note: rmcp crate not used yet, will integrate in Phase 2 for stdio transport
+
 [dev-dependencies]
 tempfile = "3.8"
 
