@@ -1523,3 +1523,84 @@ fn render_settings_view(&mut self, ui: &mut egui::Ui) {
 - Tiny Tokio Actor: https://crates.io/crates/tiny-tokio-actor
 - Tokio Channels Documentation: https://tokio.rs/tokio/tutorial/channels
 - Event-Driven Architecture Patterns: https://elitedev.in/rust/building-powerful-event-driven-systems-in-rust-7-/
+
+---
+
+## Architecture Improvements & Evolution
+
+**Last Updated**: 2025-11-13
+
+This section documents significant architectural improvements and evolutions of the agent system.
+
+### Agent-Specific Personalities
+
+**Date**: 2025-11-13
+**Goal**: Transform personality from system-wide to agent-specific
+
+**Problem**: Personality was stored in `SystemPrompts` and applied to ALL agents, which doesn't make sense for specialized tool agents (e.g., web search).
+
+**Solution**: 
+- Moved personality to `AgentConfig` as `Option<String>`
+- Only assistant agent has personality
+- Tool agents (web search, etc.) have no personality
+
+**Benefits**:
+- Clearer separation of concerns
+- Type safety with `Option<String>`
+- Simpler persistence (only one system-wide file)
+- Flexibility for specialized agents
+
+### Web Search Capabilities
+
+**Date**: 2025-11-13
+**Feature**: Added web search support via OpenRouter
+
+**Implementation**:
+- Added `tools` parameter with `web_search` tool to OpenRouter requests
+- Created specialized web search agent configuration
+- Added `web_search_enabled` flag to `AgentConfig`
+
+**Architecture**:
+- Web search agent is a specialized agent, not a system-wide capability
+- Assistant agent can delegate web search queries to web search agent
+- Supports real-time information retrieval
+
+### Multi-Agent Delegation Pattern
+
+**Date**: 2025-11-13
+**Feature**: Assistant agent can delegate to specialized agents
+
+**Pattern**:
+1. User sends query to assistant agent
+2. Assistant detects intent (e.g., web search needed)
+3. Assistant delegates to appropriate specialized agent
+4. Specialized agent processes and returns result
+5. Assistant synthesizes response for user
+
+**Benefits**:
+- Modular architecture
+- Specialized capabilities without bloating main agent
+- Clear separation of concerns
+- Extensible for future agents (code, research, etc.)
+
+### Async Agent Infrastructure
+
+**Date**: 2025-11-13
+**Feature**: Agents can call other agents asynchronously
+
+**Implementation**:
+- Agents communicate via event bus
+- Non-blocking async calls
+- Support for streaming responses from delegated agents
+
+**Benefits**:
+- Responsive UI during delegation
+- Parallel processing potential
+- Foundation for agent collaboration
+
+---
+
+For detailed implementation of these improvements, see:
+- `/docs/design/AGENT_DELEGATION_DESIGN.md` - Delegation patterns
+- `/docs/design/TOOL_REGISTRATION_DESIGN.md` - Tool calling system
+- `/docs/progress/2025-11-13-*.md` - Implementation progress logs

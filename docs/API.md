@@ -576,3 +576,125 @@ For issues or questions:
 ## License
 
 Same as Rustbot project license.
+
+---
+
+## Architecture & Implementation
+
+This section describes the API-first architecture implementation and design principles.
+
+### Architecture Layers
+
+The Rustbot API follows a layered architecture:
+
+```
+┌─────────────────────────────────────────┐
+│          UI Layer (egui)                │
+│  - Renders UI                           │
+│  - Handles user input                   │
+│  - Calls API methods                    │
+└─────────────────────────────────────────┘
+                 ↓
+┌─────────────────────────────────────────┐
+│       RustbotApi (API Layer)            │
+│  - send_message()                       │
+│  - switch_agent()                       │
+│  - clear_history()                      │
+│  - manage agents                        │
+└─────────────────────────────────────────┘
+                 ↓
+┌─────────────────────────────────────────┐
+│       Core Services                     │
+│  - Agent (processing)                   │
+│  - EventBus (pub/sub)                   │
+│  - LlmAdapter (LLM calls)              │
+└─────────────────────────────────────────┘
+```
+
+### Design Principles
+
+1. **API-First**: All functionality accessible via API
+2. **UI as Consumer**: UI calls APIs, doesn't implement logic
+3. **Testability**: Can test without UI
+4. **Flexibility**: Both blocking and non-blocking APIs
+5. **Discoverability**: Builder pattern with clear method names
+
+### Implementation
+
+**Core API Structure** (`src/api.rs`):
+
+```rust
+pub struct RustbotApi {
+    event_bus: Arc<EventBus>,
+    runtime: Arc<Runtime>,
+    agents: Vec<Agent>,
+    active_agent_id: String,
+    message_history: VecDeque<LlmMessage>,
+    max_history_size: usize,
+}
+```
+
+**API Methods**:
+
+| Method | Purpose | Use Case |
+|--------|---------|----------|
+| `send_message()` | Send message, get streaming response | Real-time display |
+| `send_message_blocking()` | Send message, wait for full response | Scripts, automation |
+| `switch_agent()` | Change active agent | Multi-agent workflows |
+| `list_agents()` | Get available agents | Discovery |
+| `clear_history()` | Clear conversation history | Reset state |
+| `get_history()` | Get message history | Context retrieval |
+| `register_agent()` | Add new agent | Extensibility |
+| `publish_event()` | Send custom events | Integration |
+| `subscribe_events()` | Receive events | Monitoring |
+
+### Library Interface
+
+Rustbot is exposed as a library via `src/lib.rs`:
+
+**Exports**:
+- `RustbotApi`, `RustbotApiBuilder` - Core API
+- `Agent`, `AgentConfig` - Agent types
+- `Event`, `EventBus`, `EventKind` - Event system
+- `LlmAdapter`, `LlmMessage`, `LlmRequest` - LLM types
+
+**Cargo.toml Configuration**:
+```toml
+[lib]
+name = "rustbot"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rustbot"
+path = "src/main.rs"
+```
+
+This enables:
+- Using Rustbot as a dependency
+- Importing types and APIs
+- Building custom applications
+
+### Problem Statement
+
+The API-first architecture addressed fundamental issues:
+
+**Original Issues**:
+1. No programmatic access - couldn't send messages from code
+2. Testing limitations - required UI to test
+3. Integration barriers - couldn't embed in other apps
+4. No scriptability - couldn't automate workflows
+5. Tight coupling - business logic mixed with UI
+
+**Solution Benefits**:
+- Complete programmatic access to all features
+- UI-independent testing
+- Easy integration into other applications
+- Script automation support
+- Clean separation of concerns
+
+---
+
+For more architectural details, see:
+- `/docs/ARCHITECTURE.md` - Core system architecture
+- `/docs/AGENT_EVENT_ARCHITECTURE.md` - Agent system design
+- `/docs/design/` - Feature-specific design documents

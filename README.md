@@ -8,11 +8,21 @@ Building a basic chatbot with OpenRouter integration and streaming responses.
 
 ## Documentation
 
-- **[Development Guide](DEVELOPMENT.md)** - Complete development workflow and best practices
+### Getting Started
+- **[Development Guide](DEVELOPMENT.md)** - Complete 600+ line development workflow and best practices
 - **[Agent Configuration](agents/README.md)** - Agent setup and customization guide
-- **[Architecture Specification](docs/design/ARCHITECTURE.md)** - Complete system design
-- **[Development Plan](docs/PRD/development-plan.md)** - Current phase roadmap
-- **[Claude.md](CLAUDE.md)** - Quick reference for AI assistants
+- **[Version Management](VERSION_MANAGEMENT.md)** - Version numbering and release guide
+
+### Architecture & Design
+- **[System Architecture](docs/ARCHITECTURE.md)** - Core system design and principles
+- **[Agent/Event Architecture](docs/AGENT_EVENT_ARCHITECTURE.md)** - Detailed agent system (46KB spec)
+- **[API Documentation](docs/API.md)** - Complete programmatic API reference
+- **[Design Documents](docs/design/)** - Feature-specific design specifications
+
+### Project Management
+- **[Development Roadmap](docs/PRD/development-plan.md)** - Current phase and planning
+- **[Documentation Index](docs/INDEX.md)** - Complete documentation catalog
+- **[AI Assistant Guide](CLAUDE.md)** - Quick reference for AI assistants
 
 ## Quick Start
 
