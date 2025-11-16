@@ -1,8 +1,8 @@
 // Version and build tracking for Rustbot
 // This file should be updated with each build
 
-pub const VERSION: &str = "0.2.1";
-pub const BUILD: &str = "0002";
+pub const VERSION: &str = "0.2.2";
+pub const BUILD: &str = "0001";
 
 pub fn version_string() -> String {
     format!("v{}-{}", VERSION, BUILD)
