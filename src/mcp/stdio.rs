@@ -351,7 +351,8 @@ mod tests {
             env: HashMap::new(),
             enabled: true,
             auto_restart: false,
-            timeout: 60,
+            max_retries: None,
+            health_check_interval: None,            timeout: 60,
             working_dir: None,
         };
 
@@ -370,7 +371,8 @@ mod tests {
             env: HashMap::new(),
             enabled: true,
             auto_restart: false,
-            timeout: 60,
+            max_retries: None,
+            health_check_interval: None,            timeout: 60,
             working_dir: None,
         };
 
@@ -396,7 +398,8 @@ mod tests {
             env: HashMap::new(),
             enabled: true,
             auto_restart: false,
-            timeout: 60,
+            max_retries: None,
+            health_check_interval: None,            timeout: 60,
             working_dir: None,
         };
 

@@ -604,6 +604,7 @@ impl eframe::App for RustbotApp {
                 EventKind::AgentMessage { .. } => "AgentMessage".to_string(),
                 EventKind::AgentStatusChange { .. } => "StatusChange".to_string(),
                 EventKind::SystemCommand(_) => "SystemCommand".to_string(),
+                EventKind::McpPluginEvent(_) => "McpPlugin".to_string(),
                 EventKind::Test(_) => "Test".to_string(),
             };
 
@@ -665,6 +666,10 @@ impl eframe::App for RustbotApp {
                                 tracing::info!("Load state command received");
                             }
                         }
+                    }
+                    EventKind::McpPluginEvent(plugin_event) => {
+                        tracing::info!("MCP plugin event received: {:?}", plugin_event);
+                        // Future: Update UI to show MCP plugin status
                     }
                     EventKind::Test(msg) => {
                         tracing::info!("Test event received: {}", msg);

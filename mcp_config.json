@@ -14,6 +14,8 @@
         "env": {},
         "enabled": false,
         "auto_restart": true,
+        "max_retries": 5,
+        "health_check_interval": 30,
         "timeout": 60
       },
       {
@@ -29,6 +31,8 @@
         "env": {},
         "enabled": false,
         "auto_restart": true,
+        "max_retries": 5,
+        "health_check_interval": 30,
         "timeout": 60
       },
       {
@@ -44,6 +48,8 @@
         "env": {},
         "enabled": false,
         "auto_restart": true,
+        "max_retries": 5,
+        "health_check_interval": 30,
         "timeout": 60
       },
       {
@@ -60,6 +66,8 @@
         },
         "enabled": false,
         "auto_restart": true,
+        "max_retries": 5,
+        "health_check_interval": 30,
         "timeout": 60
       }
     ],

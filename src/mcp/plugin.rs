@@ -154,7 +154,7 @@ pub struct PluginMetadata {
     #[serde(default)]
     pub prompts: Vec<PromptInfo>,
 
-    /// Number of times plugin has been restarted
+    /// Number of times plugin has been restarted since last successful start
     ///
     /// Used for exponential backoff calculation:
     /// - 0 restarts: 1s delay
@@ -162,16 +162,25 @@ pub struct PluginMetadata {
     /// - 2 restarts: 4s delay
     /// - 3 restarts: 8s delay
     /// - 4 restarts: 16s delay
-    /// - 5+ restarts: Mark as permanently failed
+    /// - 5+ restarts: 32s delay (max)
     #[serde(default)]
     pub restart_count: u32,
 
     /// Timestamp of last restart attempt
     ///
-    /// Used to implement restart backoff logic
+    /// Used to implement restart backoff logic and track restart patterns
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_restart: Option<SystemTime>,
+
+    /// Maximum number of restart attempts before marking plugin as failed
+    ///
+    /// Loaded from config file, defaults to 5
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
 }
+
+// Default value for max_retries
+fn default_max_retries() -> u32 { 5 }
 
 /// Tool information from MCP tools/list response
 ///
@@ -275,6 +284,7 @@ impl PluginMetadata {
             prompts: Vec::new(),
             restart_count: 0,
             last_restart: None,
+            max_retries: config.max_retries.unwrap_or(5),
         }
     }
 
@@ -295,6 +305,7 @@ impl PluginMetadata {
             prompts: Vec::new(),
             restart_count: 0,
             last_restart: None,
+            max_retries: config.max_retries.unwrap_or(5),
         }
     }
 
@@ -347,6 +358,8 @@ mod tests {
             env: std::collections::HashMap::new(),
             enabled: true,
             auto_restart: false,
+            max_retries: Some(5),
+            health_check_interval: Some(30),
             timeout: 60,
             working_dir: None,
         };
@@ -373,6 +386,7 @@ mod tests {
             prompts: vec![],
             restart_count: 0,
             last_restart: None,
+            max_retries: 5,
         };
 
         assert!(metadata.is_running());

@@ -55,8 +55,74 @@ pub enum EventKind {
     /// System command (clear conversation, save state, etc.)
     SystemCommand(SystemCommand),
 
+    /// MCP plugin lifecycle events (Phase 3)
+    McpPluginEvent(McpPluginEvent),
+
     /// Test event for initial implementation
     Test(String),
+}
+
+/// MCP Plugin events for lifecycle and state changes
+///
+/// These events allow UI and other components to react to plugin state changes,
+/// errors, and health status updates.
+#[derive(Debug, Clone)]
+pub enum McpPluginEvent {
+    /// Plugin successfully started
+    Started {
+        plugin_id: String,
+        tool_count: usize,
+    },
+
+    /// Plugin successfully stopped
+    Stopped {
+        plugin_id: String,
+    },
+
+    /// Plugin encountered an error
+    Error {
+        plugin_id: String,
+        message: String,
+    },
+
+    /// Plugin tools changed (after reload or initialization)
+    ToolsChanged {
+        plugin_id: String,
+        tool_count: usize,
+    },
+
+    /// Plugin health status update
+    HealthStatus {
+        plugin_id: String,
+        status: PluginHealthStatus,
+    },
+
+    /// Plugin restart attempted
+    RestartAttempt {
+        plugin_id: String,
+        attempt: u32,
+        max_retries: u32,
+    },
+
+    /// Configuration reloaded
+    ConfigReloaded {
+        plugins_added: Vec<String>,
+        plugins_removed: Vec<String>,
+        plugins_updated: Vec<String>,
+    },
+}
+
+/// Health status for MCP plugins
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PluginHealthStatus {
+    /// Plugin is healthy and responding
+    Healthy,
+
+    /// Plugin process exists but not responding to requests
+    Unresponsive,
+
+    /// Plugin process has died
+    Dead,
 }
 
 /// Agent status states

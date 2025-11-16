@@ -119,6 +119,14 @@ pub struct LocalServerConfig {
     #[serde(default)]
     pub auto_restart: bool,
 
+    /// Maximum number of restart attempts before marking as failed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_retries: Option<u32>,
+
+    /// Health check interval in seconds (Phase 3)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub health_check_interval: Option<u64>,
+
     /// Timeout in seconds for operations
     #[serde(default = "default_timeout")]
     pub timeout: u64,
@@ -162,6 +170,14 @@ pub struct CloudServiceConfig {
     /// Whether plugin should be connected automatically
     #[serde(default = "default_true")]
     pub enabled: bool,
+
+    /// Maximum number of restart attempts before marking as failed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_retries: Option<u32>,
+
+    /// Health check interval in seconds (Phase 3)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub health_check_interval: Option<u64>,
 
     /// Timeout in seconds for HTTP requests
     #[serde(default = "default_timeout")]
@@ -321,6 +337,120 @@ pub fn resolve_env_var(value: &str) -> Result<String> {
     }
 }
 
+/// Configuration file watcher for hot-reload capability
+///
+/// Monitors a configuration file for changes and enables dynamic plugin
+/// configuration updates without full application restart.
+///
+/// Design Decision: File modification time tracking
+///
+/// Rationale: Using file modification time (mtime) is simple and reliable
+/// for detecting config changes. More complex solutions (inotify/FSEvents)
+/// add platform-specific complexity without significant benefit for this use case.
+///
+/// Trade-offs:
+/// - Simplicity vs Features: mtime polling vs. event-driven file watching
+/// - Polling Interval: 5s balance between responsiveness and overhead
+/// - Memory: Minimal overhead (just PathBuf and SystemTime)
+///
+/// Alternatives Considered:
+/// 1. notify crate (inotify/FSEvents): Rejected - adds complexity for minimal gain
+/// 2. Manual reload command: Rejected - want automatic hot-reload UX
+/// 3. No hot-reload: Rejected - restart disrupts active plugins
+///
+/// Extension Points:
+/// - Add debouncing for rapid file changes
+/// - Add validation before reload
+/// - Add rollback on invalid config
+///
+/// Performance:
+/// - File stat: ~1-5μs on modern SSDs
+/// - Recommended poll interval: 5-10s
+/// - Memory overhead: ~100 bytes
+///
+/// Usage:
+///     let mut watcher = ConfigWatcher::new("mcp_config.json")?;
+///     if let Some(new_config) = watcher.check_for_changes().await? {
+///         manager.reload_config(new_config).await?;
+///     }
+pub struct ConfigWatcher {
+    /// Path to the configuration file being watched
+    path: PathBuf,
+
+    /// Last known modification time
+    last_modified: std::time::SystemTime,
+}
+
+impl ConfigWatcher {
+    /// Create a new config watcher for the specified file
+    ///
+    /// Error Conditions:
+    /// - File not found: Returns IoError
+    /// - Permission denied: Returns IoError
+    ///
+    /// Example:
+    ///     let watcher = ConfigWatcher::new("mcp_config.json")?;
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let metadata = std::fs::metadata(&path)?;
+        let last_modified = metadata.modified()?;
+
+        Ok(Self {
+            path,
+            last_modified,
+        })
+    }
+
+    /// Check if the configuration file has been modified
+    ///
+    /// Returns Some(McpConfig) if file was changed and successfully loaded,
+    /// None if file hasn't changed.
+    ///
+    /// Error Conditions:
+    /// - File deleted: Returns IoError
+    /// - Invalid JSON: Returns JsonError
+    /// - Validation failure: Returns Config error
+    ///
+    /// Example:
+    ///     if let Some(new_config) = watcher.check_for_changes().await? {
+    ///         println!("Config changed, reloading...");
+    ///         manager.reload_config(new_config).await?;
+    ///     }
+    pub async fn check_for_changes(&mut self) -> Result<Option<McpConfig>> {
+        // Use tokio::fs for async file operations
+        let metadata = tokio::fs::metadata(&self.path).await?;
+        let current_modified = metadata.modified()?;
+
+        // Check if file was modified since last check
+        if current_modified > self.last_modified {
+            tracing::info!(
+                "Configuration file changed at {:?}, reloading...",
+                current_modified
+            );
+
+            // Update last modified time
+            self.last_modified = current_modified;
+
+            // Load and validate new configuration
+            let config = McpConfig::load_from_file(&self.path)?;
+
+            Ok(Some(config))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Get the path being watched
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Get the last modification time
+    pub fn last_modified(&self) -> std::time::SystemTime {
+        self.last_modified
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,6 +470,8 @@ mod tests {
                         env: HashMap::new(),
                         enabled: true,
                         auto_restart: false,
+                        max_retries: Some(5),
+                        health_check_interval: Some(30),
                         timeout: 60,
                         working_dir: None,
                     }
@@ -369,6 +501,8 @@ mod tests {
                         env: HashMap::new(),
                         enabled: true,
                         auto_restart: false,
+                        max_retries: None,
+                        health_check_interval: None,
                         timeout: 60,
                         working_dir: None,
                     },
@@ -381,6 +515,8 @@ mod tests {
                         env: HashMap::new(),
                         enabled: true,
                         auto_restart: false,
+                        max_retries: None,
+                        health_check_interval: None,
                         timeout: 60,
                         working_dir: None,
                     }
