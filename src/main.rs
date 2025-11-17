@@ -5,6 +5,7 @@ mod error;
 mod events;
 mod llm;
 mod mcp;
+mod mermaid;
 mod tool_executor;
 mod ui;
 mod version;
@@ -20,9 +21,10 @@ use std::collections::VecDeque;
 use tokio::sync::{broadcast, mpsc, Mutex};
 use std::path::PathBuf;
 use egui_phosphor::regular as icons;
-use ui::{AppView, ChatMessage, ContextTracker, MessageRole, PluginsView, SettingsView, SystemPrompts, TokenStats, VisualEvent};
+use ui::{AppView, ChatMessage, ContextTracker, MessageRole, PluginsView, SettingsView, ExtensionsView, SystemPrompts, TokenStats, VisualEvent};
 use ui::icon::create_window_icon;
 use mcp::manager::McpPluginManager;
+use egui_commonmark::CommonMarkCache;
 
 fn main() -> std::result::Result<(), eframe::Error> {
     // Initialize tracing for logging
@@ -57,6 +59,9 @@ fn main() -> std::result::Result<(), eframe::Error> {
         "rustbot",
         options,
         Box::new(|cc| {
+            // Install SVG image loader for rendering Mermaid diagrams
+            egui_extras::install_image_loaders(&cc.egui_ctx);
+
             // Setup custom fonts
             let mut fonts = egui::FontDefinitions::default();
 
@@ -136,7 +141,6 @@ struct RustbotApp {
     current_view: AppView,
     settings_view: SettingsView,
     system_prompts: SystemPrompts,
-    selected_model: String,
     current_activity: Option<String>,  // Track current agent activity
 
     // Event visualization
@@ -154,7 +158,14 @@ struct RustbotApp {
     // MCP Plugin Manager and UI
     mcp_manager: Arc<Mutex<McpPluginManager>>,
     plugins_view: Option<PluginsView>,
-    marketplace_view: Option<ui::MarketplaceView>,
+    extensions_marketplace_view: Option<ui::MarketplaceView>,
+    extensions_view: ExtensionsView,
+
+    // Markdown rendering
+    markdown_cache: CommonMarkCache,
+
+    // Mermaid diagram rendering
+    mermaid_renderer: Arc<Mutex<mermaid::MermaidRenderer>>,
 
     // Keep runtime for async operations
     runtime: Arc<tokio::runtime::Runtime>,
@@ -236,7 +247,10 @@ impl RustbotApp {
         ));
 
         // Create marketplace view with runtime handle
-        let marketplace_view = Some(ui::MarketplaceView::new(runtime.handle().clone()));
+        let extensions_marketplace_view = Some(ui::MarketplaceView::new(runtime.handle().clone()));
+
+        // Create mermaid renderer
+        let mermaid_renderer = Arc::new(Mutex::new(mermaid::MermaidRenderer::new()));
 
         Self {
             api: Arc::new(Mutex::new(api)),
@@ -252,7 +266,6 @@ impl RustbotApp {
             current_view: AppView::Chat,
             settings_view: SettingsView::Agents, // Start with Agents view to show loaded agents
             system_prompts,
-            selected_model: "Claude Sonnet 4.5".to_string(),
             current_activity: None,
             event_rx,
             agent_configs: agent_configs.clone(),
@@ -262,7 +275,10 @@ impl RustbotApp {
             pending_agent_result: None,
             mcp_manager,
             plugins_view,
-            marketplace_view,
+            extensions_marketplace_view,
+            extensions_view: ExtensionsView::default(),
+            markdown_cache: CommonMarkCache::default(),
+            mermaid_renderer,
             runtime,
         }
     }
@@ -427,6 +443,13 @@ impl RustbotApp {
             .or_else(|_| std::env::var("USERNAME"))
             .unwrap_or_else(|_| "unknown".to_string());
 
+        // Get the primary agent's model
+        let model = self.agent_configs
+            .iter()
+            .find(|config| config.is_primary)
+            .map(|config| config.model.as_str())
+            .unwrap_or("unknown");
+
         // Build the system context
         format!(
             r#"## System Context
@@ -441,7 +464,7 @@ impl RustbotApp {
 This information is provided automatically to give you context about the current system environment."#,
             datetime,
             day_of_week,
-            self.selected_model,
+            model,
             version::version_string(),
             os,
             arch,
@@ -528,6 +551,127 @@ This information is provided automatically to give you context about the current
         tracing::info!("✅ Configuration reloaded successfully");
     }
 
+    /// Extract all base64 image data URLs from markdown content
+    ///
+    /// This helper function finds all embedded images in the format:
+    /// ![alt](data:image/jpeg;base64,...)
+    ///
+    /// # Arguments
+    /// * `markdown` - The markdown content to search
+    ///
+    /// # Returns
+    /// Vector of base64-encoded image data URLs
+    fn extract_image_data_urls(markdown: &str) -> Vec<String> {
+        use regex::Regex;
+        let mut images = Vec::new();
+
+        // Match data URL images: ![...](data:image/...;base64,...)
+        let pattern = Regex::new(r#"!\[[^\]]*\]\((data:image/[^;]+;base64,[A-Za-z0-9+/=]+)\)"#)
+            .expect("Invalid regex pattern");
+
+        for cap in pattern.captures_iter(markdown) {
+            if let Some(data_url) = cap.get(1) {
+                images.push(data_url.as_str().to_string());
+            }
+        }
+
+        images
+    }
+
+    /// Preprocess markdown content to render mermaid diagrams
+    ///
+    /// This method detects mermaid code blocks and replaces them with embedded SVG data.
+    /// The replacement happens inline in the markdown, converting:
+    /// ```mermaid
+    /// graph TD
+    ///   A-->B
+    /// ```
+    ///
+    /// Into an embedded SVG image that egui_commonmark can display.
+    ///
+    /// # Arguments
+    /// * `markdown` - The original markdown content with mermaid blocks
+    ///
+    /// # Returns
+    /// Preprocessed markdown with mermaid diagrams replaced by SVG embeds
+    fn preprocess_mermaid(&self, markdown: &str) -> String {
+        // First, validate any existing base64 SVG images in the markdown
+        // This handles cases where the LLM already generated base64 SVG images
+        let mut result = markdown.to_string();
+
+        // Look for base64 SVG images: ![...](data:image/svg+xml;base64,...)
+        use regex::Regex;
+        let base64_img_pattern = Regex::new(r#"!\[([^\]]*)\]\(data:image/svg\+xml;base64,([A-Za-z0-9+/=]+)\)"#).unwrap();
+
+        // Validate and fix any base64 SVG images
+        for cap in base64_img_pattern.captures_iter(markdown) {
+            if let (Some(alt_text), Some(base64_data)) = (cap.get(1), cap.get(2)) {
+                use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+                // Try to decode the base64 to verify it's valid
+                if let Ok(svg_bytes) = BASE64.decode(base64_data.as_str()) {
+                    // Verify it's actually SVG
+                    if let Ok(svg_str) = std::str::from_utf8(&svg_bytes[..svg_bytes.len().min(100)]) {
+                        if svg_str.trim_start().starts_with("<?xml") || svg_str.trim_start().starts_with("<svg") {
+                            tracing::debug!("✓ Found valid base64 SVG image in markdown ({} bytes)", svg_bytes.len());
+                            // It's valid, keep it as-is
+                            continue;
+                        }
+                    }
+                }
+                tracing::warn!("Found invalid base64 SVG image, will remove it");
+            }
+        }
+
+        // Then, extract and render mermaid code blocks
+        let blocks = mermaid::extract_mermaid_blocks(&result);
+
+        if blocks.is_empty() {
+            return result;
+        }
+
+        let renderer = Arc::clone(&self.mermaid_renderer);
+        let runtime = Arc::clone(&self.runtime);
+
+        // Process blocks in reverse order to maintain correct indices
+        for (start, end, code) in blocks.iter().rev() {
+            // Try to render the diagram as PNG (better compatibility with egui_commonmark)
+            let png_result = runtime.block_on(async {
+                if let Ok(mut r) = renderer.try_lock() {
+                    r.render_to_png(code).await
+                } else {
+                    Err(mermaid::MermaidError::EncodingError("Renderer locked".to_string()))
+                }
+            });
+
+            match png_result {
+                Ok(image_bytes) => {
+                    // Convert image bytes to base64 data URL
+                    // Note: mermaid.ink/img/ returns JPEG (with labels) instead of PNG (transparent)
+                    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+                    let img_base64 = BASE64.encode(&image_bytes);
+                    let data_url = format!("data:image/jpeg;base64,{}", img_base64);
+
+                    // Replace mermaid block with image markdown
+                    // Note: egui_commonmark supports image syntax: ![alt](url)
+                    let replacement = format!("![Mermaid Diagram]({})", data_url);
+
+                    result.replace_range(*start..*end, &replacement);
+
+                    tracing::debug!("✓ Rendered mermaid diagram ({} bytes JPEG)", image_bytes.len());
+                }
+                Err(e) => {
+                    // On error, leave the code block as-is (graceful degradation)
+                    tracing::warn!("Failed to render mermaid diagram: {}", e);
+                    // Optionally, we could add an error message:
+                    // let error_msg = format!("```\nError rendering diagram: {}\n```", e);
+                    // result.replace_range(*start..*end, &error_msg);
+                }
+            }
+        }
+
+        result
+    }
+
     fn send_message(&mut self, _ctx: &egui::Context) {
         if self.message_input.trim().is_empty() || self.is_waiting {
             return;
@@ -545,6 +689,7 @@ This information is provided automatically to give you context about the current
             content: self.message_input.clone(),
             input_tokens: Some(input_tokens),
             output_tokens: None,
+            embedded_images: Vec::new(), // User messages don't have embedded images
         });
 
         // Add placeholder for assistant response
@@ -553,6 +698,7 @@ This information is provided automatically to give you context about the current
             content: String::new(),
             input_tokens: None,
             output_tokens: None,
+            embedded_images: Vec::new(), // Will be populated when content is set
         });
 
         self.is_waiting = true;
@@ -597,6 +743,7 @@ This information is provided automatically to give you context about the current
             content: content.clone(),
             input_tokens: Some(input_tokens),
             output_tokens: None,
+            embedded_images: Vec::new(), // User messages don't have embedded images
         });
 
         // Add placeholder for assistant response
@@ -605,6 +752,7 @@ This information is provided automatically to give you context about the current
             content: String::new(),
             input_tokens: None,
             output_tokens: None,
+            embedded_images: Vec::new(), // Will be populated when content is set
         });
 
         self.is_waiting = true;
@@ -817,9 +965,15 @@ impl eframe::App for RustbotApp {
                 // Save stats after updating
                 let _ = self.save_token_stats();
 
-                // Update the last message with token count
+                // Preprocess mermaid diagrams in the response once when content is finalized
+                let preprocessed_content = self.preprocess_mermaid(&self.current_response);
+
+                // Update the last message with token count and preprocessed content
                 if let Some(last_msg) = self.messages.last_mut() {
                     last_msg.output_tokens = Some(output_tokens);
+                    last_msg.content = preprocessed_content.clone();
+                    // Extract embedded image data URLs for easy access
+                    last_msg.embedded_images = Self::extract_image_data_urls(&preprocessed_content);
                 }
 
                 // Add assistant response to API's message history
@@ -910,20 +1064,6 @@ impl eframe::App for RustbotApp {
 
                         ui.add_space(5.0);
 
-                        ui.horizontal(|ui| {
-                            let plugins_button = ui.add(
-                                egui::SelectableLabel::new(
-                                    self.current_view == AppView::Plugins,
-                                    format!("{} Plugins", icons::PUZZLE_PIECE)
-                                )
-                            );
-                            if plugins_button.clicked() {
-                                self.current_view = AppView::Plugins;
-                            }
-                        });
-
-                        ui.add_space(5.0);
-
                         // Events button
                         ui.horizontal(|ui| {
                             let events_button = ui.add(
@@ -939,16 +1079,16 @@ impl eframe::App for RustbotApp {
 
                         ui.add_space(5.0);
 
-                        // Marketplace button
+                        // Extensions button (was Marketplace)
                         ui.horizontal(|ui| {
-                            let marketplace_button = ui.add(
+                            let extensions_button = ui.add(
                                 egui::SelectableLabel::new(
-                                    self.current_view == AppView::Marketplace,
-                                    format!("{} Marketplace", icons::STOREFRONT)
+                                    self.current_view == AppView::Extensions,
+                                    format!("{} Extensions", icons::PUZZLE_PIECE)
                                 )
                             );
-                            if marketplace_button.clicked() {
-                                self.current_view = AppView::Marketplace;
+                            if extensions_button.clicked() {
+                                self.current_view = AppView::Extensions;
                             }
                         });
 
@@ -1059,9 +1199,8 @@ impl eframe::App for RustbotApp {
                 match self.current_view {
                     AppView::Chat => self.render_chat_view(ui, ctx),
                     AppView::Settings => self.render_settings_view(ui),
-                    AppView::Plugins => self.render_plugins_view(ui, ctx),
                     AppView::Events => self.render_events_view(ui),
-                    AppView::Marketplace => self.render_marketplace_view(ui, ctx),
+                    AppView::Extensions => self.render_extensions_view(ui, ctx),
                 }
             });
         });
