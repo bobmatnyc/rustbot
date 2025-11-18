@@ -188,6 +188,7 @@ impl AgentLoader {
             enabled: json.enabled,
             is_primary: json.is_primary,
             web_search_enabled: json.capabilities.web_search,
+            mcp_extensions: json.mcp_extensions,
         })
     }
 }

@@ -1,10 +1,11 @@
 // UI view rendering methods for Rustbot
 // Contains all the main view rendering functions extracted from RustbotApp
 
-use crate::ui::{MessageRole, SettingsView};
+use crate::ui::{MessageRole, SettingsView, ExtensionsView};
 use eframe::egui;
 use egui_phosphor::regular as icons;
 use std::sync::Arc;
+use egui_commonmark::CommonMarkViewer;
 
 /// Extension trait to add view rendering methods to RustbotApp
 /// This allows us to define methods on RustbotApp from a separate module
@@ -121,7 +122,7 @@ impl crate::RustbotApp {
                             }
                         });
 
-                        // Display message content with proper wrapping
+                        // Display message content with proper wrapping and markdown rendering
                         if !msg.content.is_empty() {
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
@@ -129,10 +130,40 @@ impl crate::RustbotApp {
                                 let available_width = ui.available_width() - 20.0;
                                 ui.vertical(|ui| {
                                     ui.set_max_width(available_width);
-                                    ui.label(
-                                        egui::RichText::new(&msg.content)
-                                            .color(egui::Color32::from_rgb(40, 40, 40)),
-                                    );
+                                    // Render markdown content (mermaid preprocessing happens when content is set)
+                                    CommonMarkViewer::new()
+                                        .show(ui, &mut self.markdown_cache, &msg.content);
+
+                                    // Add copy buttons for embedded images (Mermaid diagrams)
+                                    if !msg.embedded_images.is_empty() {
+                                        ui.add_space(6.0);
+                                        ui.horizontal(|ui| {
+                                            ui.add_space(2.0);
+
+                                            for (i, data_url) in msg.embedded_images.iter().enumerate() {
+                                                let label = if msg.embedded_images.len() == 1 {
+                                                    format!("{} Copy Diagram", icons::CLIPBOARD)
+                                                } else {
+                                                    format!("{} Copy Diagram {}", icons::CLIPBOARD, i + 1)
+                                                };
+
+                                                if ui.button(
+                                                    egui::RichText::new(label)
+                                                        .size(10.5)
+                                                        .color(egui::Color32::from_rgb(80, 120, 180))
+                                                )
+                                                .on_hover_text("Copy diagram image to clipboard (as data URL)")
+                                                .clicked() {
+                                                    ui.ctx().copy_text(data_url.clone());
+                                                    tracing::info!("📋 Copied diagram {} to clipboard", i + 1);
+                                                }
+
+                                                if i < msg.embedded_images.len() - 1 {
+                                                    ui.add_space(8.0);
+                                                }
+                                            }
+                                        });
+                                    }
                                 });
                             });
                         }
@@ -220,10 +251,21 @@ impl crate::RustbotApp {
                 self.token_stats.total_output,
             );
 
+            // Get current model from primary agent
+            let model = self.agent_configs
+                .iter()
+                .find(|config| config.is_primary)
+                .map(|config| {
+                    // Extract just the model name (after the last slash)
+                    config.model.split('/').last().unwrap_or(&config.model)
+                })
+                .unwrap_or("unknown");
+
             ui.label(
                 egui::RichText::new(format!(
-                    "{} Daily: {}↑ {}↓ (${:.4})  •  Total: {}↑ {}↓ (${:.4})",
+                    "{} {} • Daily: {}↑ {}↓ (${:.4})  •  Total: {}↑ {}↓ (${:.4})",
                     icons::CHART_LINE,
+                    model,
                     self.token_stats.daily_input,
                     self.token_stats.daily_output,
                     daily_cost,
@@ -235,8 +277,30 @@ impl crate::RustbotApp {
                 .color(egui::Color32::from_rgb(120, 120, 120)),
             );
 
-            // Add space before clear button
+            // Add space before buttons
             ui.add_space(20.0);
+
+            // Copy full chat button
+            if ui
+                .button(egui::RichText::new(format!("{} Copy Chat", icons::CLIPBOARD_TEXT)).size(11.0))
+                .on_hover_text("Copy full conversation to clipboard")
+                .clicked()
+            {
+                // Build full conversation text
+                let mut full_chat = String::new();
+                for msg in &self.messages {
+                    let role = match msg.role {
+                        MessageRole::User => "You",
+                        MessageRole::Assistant => "Assistant",
+                    };
+                    full_chat.push_str(&format!("{}:\n{}\n\n", role, msg.content));
+                }
+
+                // Copy to clipboard
+                ui.ctx().copy_text(full_chat);
+            }
+
+            ui.add_space(10.0);
 
             // Clear chat button
             if ui
@@ -299,16 +363,6 @@ impl crate::RustbotApp {
     pub fn render_settings_view(&mut self, ui: &mut egui::Ui) {
         // Secondary navigation bar under header
         ui.horizontal(|ui| {
-            let ai_settings_button = ui.add(egui::SelectableLabel::new(
-                self.settings_view == SettingsView::AiSettings,
-                "AI Settings",
-            ));
-            if ai_settings_button.clicked() {
-                self.settings_view = SettingsView::AiSettings;
-            }
-
-            ui.add_space(10.0);
-
             let system_prompts_button = ui.add(egui::SelectableLabel::new(
                 self.settings_view == SettingsView::SystemPrompts,
                 "System Prompts",
@@ -331,57 +385,9 @@ impl crate::RustbotApp {
 
         // Render content based on selected settings view
         match self.settings_view {
-            SettingsView::AiSettings => self.render_ai_settings(ui),
             SettingsView::SystemPrompts => self.render_system_prompts(ui),
             SettingsView::Agents => self.render_agents_view(ui),
         }
-    }
-
-    /// Render the AI settings view for model selection
-    ///
-    /// Allows users to select the LLM model to use for conversations.
-    /// Currently supports Claude Sonnet 4.5, Claude Sonnet 4, Claude Opus 4, and GPT-4.
-    ///
-    /// # Arguments
-    /// * `ui` - The egui UI context for rendering
-    pub fn render_ai_settings(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(20.0);
-        ui.heading("AI Model Selection");
-        ui.add_space(10.0);
-
-        ui.horizontal(|ui| {
-            ui.label("Select LLM Model:");
-            egui::ComboBox::from_id_salt("model_selector")
-                .selected_text(&self.selected_model)
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut self.selected_model,
-                        "Claude Sonnet 4.5".to_string(),
-                        "Claude Sonnet 4.5",
-                    );
-                    ui.selectable_value(
-                        &mut self.selected_model,
-                        "Claude Sonnet 4".to_string(),
-                        "Claude Sonnet 4",
-                    );
-                    ui.selectable_value(
-                        &mut self.selected_model,
-                        "Claude Opus 4".to_string(),
-                        "Claude Opus 4",
-                    );
-                    ui.selectable_value(
-                        &mut self.selected_model,
-                        "GPT-4".to_string(),
-                        "GPT-4",
-                    );
-                });
-        });
-
-        ui.add_space(20.0);
-        ui.label(
-            egui::RichText::new(format!("Currently using: {}", self.selected_model))
-                .color(egui::Color32::from_rgb(80, 80, 80)),
-        );
     }
 
     /// Render the system prompts configuration view
@@ -444,53 +450,6 @@ impl crate::RustbotApp {
             });
     }
 
-    /// Render the plugins management view
-    ///
-    /// Displays all MCP plugins with management controls
-    ///
-    /// # Arguments
-    /// * `ui` - The egui UI context for rendering
-    /// * `ctx` - The egui Context for global state and repaints
-    pub fn render_plugins_view(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if let Some(plugins_view) = &mut self.plugins_view {
-            // Trigger async refresh
-            let manager = Arc::clone(&self.mcp_manager);
-            let has_plugins = {
-                let rt = Arc::clone(&self.runtime);
-                rt.block_on(async {
-                    if let Ok(mgr) = manager.try_lock() {
-                        mgr.plugin_count().await > 0
-                    } else {
-                        false
-                    }
-                })
-            };
-
-            // Refresh plugin list periodically
-            if has_plugins {
-                let manager_clone = Arc::clone(&self.mcp_manager);
-                let rt = Arc::clone(&self.runtime);
-                rt.spawn(async move {
-                    if let Ok(mgr) = manager_clone.try_lock() {
-                        // Just trigger a check, actual refresh happens in plugins_view.render()
-                        let _ = mgr.plugin_count().await;
-                    }
-                });
-            }
-
-            // Render the plugins view
-            plugins_view.render(ui, ctx);
-
-            // Request periodic repaints for auto-refresh
-            ctx.request_repaint_after(std::time::Duration::from_secs(2));
-        } else {
-            ui.vertical_centered(|ui| {
-                ui.add_space(50.0);
-                ui.label("Plugins view not initialized");
-            });
-        }
-    }
-
     /// Render the events view showing recent MCP plugin events
     ///
     /// Displays a dedicated view for monitoring MCP plugin events including:
@@ -505,7 +464,7 @@ impl crate::RustbotApp {
         ui.heading(format!("{} Recent Events", icons::LIST_BULLETS));
         ui.add_space(10.0);
 
-        ui.label("Monitor MCP plugin activity and events:");
+        ui.label("Monitor MCP extension activity and events:");
         ui.add_space(15.0);
 
         if let Some(plugins_view) = &self.plugins_view {
@@ -530,13 +489,130 @@ impl crate::RustbotApp {
     /// * `ui` - The egui UI context for rendering
     /// * `ctx` - The egui Context for global state and repaints
     pub fn render_marketplace_view(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if let Some(marketplace_view) = &mut self.marketplace_view {
+        if let Some(marketplace_view) = &mut self.extensions_marketplace_view {
             marketplace_view.render(ui, ctx);
         } else {
             ui.vertical_centered(|ui| {
                 ui.add_space(50.0);
                 ui.label(
                     egui::RichText::new("Marketplace view not initialized")
+                        .size(14.0)
+                        .color(egui::Color32::from_rgb(120, 120, 120))
+                );
+            });
+        }
+    }
+
+    /// Render the extensions view with tabs for Marketplace, Remote, and Local
+    ///
+    /// This view provides a unified interface for managing MCP extensions:
+    /// - Marketplace: Browse and discover available MCP servers
+    /// - Remote: Manage remote/cloud-hosted MCP services
+    /// - Local: View and manage locally installed plugins
+    ///
+    /// # Arguments
+    /// * `ui` - The egui UI context for rendering
+    /// * `ctx` - The egui Context for global state and repaints
+    pub fn render_extensions_view(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        // Secondary navigation bar (tabs) - similar to Settings view pattern
+        ui.horizontal(|ui| {
+            if ui.selectable_label(
+                self.extensions_view == ExtensionsView::Marketplace,
+                format!("{} Marketplace", icons::STOREFRONT)
+            ).clicked() {
+                self.extensions_view = ExtensionsView::Marketplace;
+            }
+
+            ui.add_space(10.0);
+
+            if ui.selectable_label(
+                self.extensions_view == ExtensionsView::Remote,
+                format!("{} Remote", icons::GLOBE)
+            ).clicked() {
+                self.extensions_view = ExtensionsView::Remote;
+            }
+
+            ui.add_space(10.0);
+
+            if ui.selectable_label(
+                self.extensions_view == ExtensionsView::Local,
+                format!("{} Local", icons::LIST)
+            ).clicked() {
+                self.extensions_view = ExtensionsView::Local;
+            }
+        });
+        ui.separator();
+
+        // Render active subview
+        match self.extensions_view {
+            ExtensionsView::Marketplace => {
+                // Reuse existing marketplace view
+                self.render_marketplace_view(ui, ctx);
+            }
+            ExtensionsView::Remote => {
+                self.render_remote_extensions(ui);
+            }
+            ExtensionsView::Local => {
+                self.render_local_extensions(ui, ctx);
+            }
+        }
+    }
+
+    /// Render remote extensions view (placeholder for future implementation)
+    fn render_remote_extensions(&mut self, ui: &mut egui::Ui) {
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.add_space(20.0);
+                ui.vertical_centered(|ui| {
+                    ui.heading("Remote Extensions");
+                    ui.add_space(20.0);
+                    ui.label(
+                        egui::RichText::new("Remote extension management coming soon...")
+                            .size(14.0)
+                            .color(egui::Color32::from_rgb(120, 120, 120))
+                    );
+                    ui.add_space(30.0);
+
+                    // Show planned features
+                    ui.group(|ui| {
+                        ui.set_min_width(400.0);
+                        ui.add_space(10.0);
+                        ui.label(egui::RichText::new("Planned Features:").strong());
+                        ui.add_space(10.0);
+
+                        ui.horizontal(|ui| {
+                            ui.label(format!("{}", icons::CLOUD));
+                            ui.label("Connect to cloud-hosted MCP services");
+                        });
+                        ui.add_space(5.0);
+
+                        ui.horizontal(|ui| {
+                            ui.label(format!("{}", icons::KEY));
+                            ui.label("Manage authentication credentials");
+                        });
+                        ui.add_space(5.0);
+
+                        ui.horizontal(|ui| {
+                            ui.label(format!("{}", icons::HEARTBEAT));
+                            ui.label("Monitor remote service health");
+                        });
+                        ui.add_space(10.0);
+                    });
+                });
+            });
+    }
+
+    /// Render local extensions view (shows installed MCP plugins)
+    fn render_local_extensions(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        // Reuse existing plugins view for local extensions
+        if let Some(plugins_view) = &mut self.plugins_view {
+            plugins_view.render(ui, ctx);
+        } else {
+            ui.vertical_centered(|ui| {
+                ui.add_space(50.0);
+                ui.label(
+                    egui::RichText::new("Local extensions view not initialized")
                         .size(14.0)
                         .color(egui::Color32::from_rgb(120, 120, 120))
                 );
@@ -728,8 +804,13 @@ impl crate::RustbotApp {
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(
                                     &mut config.model,
+                                    "openai/gpt-5.1-turbo".to_string(),
+                                    "GPT-5.1 Turbo",
+                                );
+                                ui.selectable_value(
+                                    &mut config.model,
                                     "openai/gpt-4o".to_string(),
-                                    "GPT-4o (Default)",
+                                    "GPT-4o",
                                 );
                                 ui.selectable_value(
                                     &mut config.model,

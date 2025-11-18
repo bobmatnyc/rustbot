@@ -7,11 +7,13 @@ use crate::events::{Event, EventBus, EventKind, AgentStatus};
 use crate::llm::{Message as LlmMessage, LlmAdapter};
 use crate::mcp::protocol::McpToolDefinition;
 use crate::mcp::manager::McpPluginManager;
+use crate::mcp::extensions::ExtensionRegistry;
 use crate::tool_executor::ToolExecutor;
 use anyhow::{Result, Context as AnyhowContext};
 use async_trait::async_trait;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
+use std::path::PathBuf;
 use tokio::sync::{mpsc, Mutex};
 use tokio::sync::RwLock;
 use tokio::runtime::Runtime;
@@ -63,6 +65,10 @@ pub struct RustbotApi {
     /// Optional - only present if MCP support is enabled
     mcp_manager: Option<Arc<Mutex<McpPluginManager>>>,
 
+    /// Extension registry for installed MCP services
+    /// Thread-safe for concurrent access
+    extension_registry: Arc<RwLock<ExtensionRegistry>>,
+
     /// Currently active agent ID
     active_agent_id: String,
 
@@ -80,6 +86,15 @@ impl RustbotApi {
         runtime: Arc<Runtime>,
         max_history_size: usize,
     ) -> Self {
+        // Load extension registry from default path
+        let registry_path = PathBuf::from(dirs::home_dir().unwrap_or_default())
+            .join(".rustbot")
+            .join("extensions")
+            .join("registry.json");
+
+        let extension_registry = ExtensionRegistry::load(&registry_path)
+            .unwrap_or_else(|_| ExtensionRegistry::new());
+
         Self {
             event_bus,
             runtime,
@@ -88,6 +103,7 @@ impl RustbotApi {
             available_tools: Vec::new(),
             mcp_tools: Arc::new(RwLock::new(HashMap::new())),
             mcp_manager: None, // MCP manager can be added later via set_mcp_manager()
+            extension_registry: Arc::new(RwLock::new(extension_registry)),
             active_agent_id: String::from("assistant"),
             message_history: VecDeque::new(),
             max_history_size,
@@ -292,6 +308,76 @@ impl RustbotApi {
         let tools = ToolDefinition::from_agents(&self.agent_configs);
         tracing::info!("🔍 [DEBUG] build_tool_definitions returning {} tools", tools.len());
         tools
+    }
+
+    /// Get tools from agent-specific enabled MCP extensions
+    ///
+    /// This loads tools from extensions that the agent has explicitly enabled
+    /// via the `mcpExtensions` field in their configuration.
+    ///
+    /// # Arguments
+    /// * `agent_config` - The agent configuration containing enabled extension IDs
+    ///
+    /// # Returns
+    /// Vector of tool definitions from the agent's enabled extensions
+    async fn get_agent_extension_tools(
+        &self,
+        agent_config: &AgentConfig,
+    ) -> Vec<ToolDefinition> {
+        let extension_tools = Vec::new();
+
+        // If agent has no extensions enabled, return empty list
+        if agent_config.mcp_extensions.is_empty() {
+            tracing::debug!(
+                "Agent '{}' has no MCP extensions enabled",
+                agent_config.name
+            );
+            return extension_tools;
+        }
+
+        tracing::info!(
+            "Loading MCP extension tools for agent '{}': {:?}",
+            agent_config.name,
+            agent_config.mcp_extensions
+        );
+
+        // Get read lock on extension registry
+        let registry = self.extension_registry.read().await;
+
+        // For each enabled extension ID
+        for extension_id in &agent_config.mcp_extensions {
+            // Look up extension in registry
+            if let Some(_extension) = registry.get(extension_id) {
+                tracing::debug!(
+                    "Found extension '{}' for agent '{}'",
+                    extension_id,
+                    agent_config.name
+                );
+
+                // TODO: Load actual MCP tools from the extension
+                // This will require:
+                // 1. Starting the MCP server/service if not already running
+                // 2. Calling tools/list on the MCP service
+                // 3. Converting MCP tool definitions to Rustbot format
+                //
+                // For now, we'll add a placeholder noting the extension is enabled
+                // Full implementation will come in Phase 2 when MCP client is ready
+
+                tracing::info!(
+                    "Extension '{}' is enabled for agent '{}' but MCP tool loading not yet implemented",
+                    extension_id,
+                    agent_config.name
+                );
+            } else {
+                tracing::warn!(
+                    "Agent '{}' references extension '{}' which is not installed",
+                    agent_config.name,
+                    extension_id
+                );
+            }
+        }
+
+        extension_tools
     }
 
     /// Update the tool registry
@@ -583,7 +669,20 @@ impl RustbotApi {
                     "🔍 [DEBUG] Agent is PRIMARY, cloning {} tools",
                     self.available_tools.len()
                 );
-                Some(self.available_tools.clone())
+                let mut all_tools = self.available_tools.clone();
+
+                // Load agent-specific MCP extension tools
+                let extension_tools = self.get_agent_extension_tools(config).await;
+                if !extension_tools.is_empty() {
+                    tracing::info!(
+                        "🔍 [DEBUG] Adding {} extension tools for agent '{}'",
+                        extension_tools.len(),
+                        config.name
+                    );
+                    all_tools.extend(extension_tools);
+                }
+
+                Some(all_tools)
             } else {
                 // Specialist agents don't get tools
                 tracing::info!("🔍 [DEBUG] Agent is NOT primary, no tools");

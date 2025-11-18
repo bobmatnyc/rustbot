@@ -10,7 +10,7 @@ pub mod marketplace;
 // Re-export commonly used types for convenience
 pub use types::{
     AppView, ChatMessage, ContextTracker, MessageRole,
-    SettingsView, SystemPrompts, TokenStats, VisualEvent,
+    SettingsView, ExtensionsView, SystemPrompts, TokenStats, VisualEvent,
 };
 
 pub use plugins::PluginsView;

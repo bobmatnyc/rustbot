@@ -121,6 +121,7 @@ pub mod protocol;   // Phase 2: MCP protocol types
 pub mod stdio;      // Phase 2: stdio transport implementation
 pub mod client;     // Phase 2: High-level MCP client
 pub mod marketplace; // Marketplace API client for MCP Registry
+pub mod extensions;  // Extension system for downloadable MCP services
 
 // Re-export commonly used types for convenience
 pub use config::{

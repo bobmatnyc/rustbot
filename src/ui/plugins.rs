@@ -1,4 +1,6 @@
-//! Plugins View UI Component
+//! Extensions (Local) View UI Component
+//!
+//! Displays locally installed MCP plugins/extensions with management controls.
 //!
 //! Comprehensive UI for managing MCP plugins in Rustbot.
 //!
@@ -31,7 +33,10 @@ use crate::mcp::manager::McpPluginManager;
 use crate::mcp::plugin::{PluginMetadata, PluginState};
 use crate::events::{Event, EventBus, EventKind, McpPluginEvent, PluginHealthStatus};
 
-/// Plugins management view
+/// Extensions (local) management view
+///
+/// This view shows locally installed MCP extensions and is displayed
+/// within the Extensions tab > Local subtab.
 ///
 /// Displays all MCP plugins with:
 /// - Real-time status indicators
@@ -108,7 +113,7 @@ impl PluginsView {
     pub fn render(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         // Header
         ui.horizontal(|ui| {
-            ui.heading(format!("{} MCP Plugins", icons::PUZZLE_PIECE));
+            ui.heading(format!("{} Local Extensions", icons::PUZZLE_PIECE));
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // Reload config button
@@ -163,7 +168,7 @@ impl PluginsView {
     /// - Plugin name
     /// - Tool count badge
     fn render_plugin_list(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
-        ui.heading("Available Plugins");
+        ui.heading("Available Extensions");
         ui.add_space(5.0);
 
         if self.plugins.is_empty() {

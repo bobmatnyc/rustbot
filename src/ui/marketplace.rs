@@ -126,7 +126,7 @@ impl MarketplaceView {
             error_message: None,
             current_page: 0,
             total_servers: 0,
-            servers_per_page: 20,
+            servers_per_page: 100,  // Use API maximum for better deduplication coverage
             next_cursor: None,
             fetch_rx,
             fetch_tx,
@@ -260,13 +260,16 @@ impl MarketplaceView {
                     let servers = Self::deduplicate_servers(registry.servers);
                     self.servers = servers;
 
+                    // Store pagination cursor for next page
                     if let Some(metadata) = registry.metadata {
-                        self.total_servers = metadata.count;
                         self.next_cursor = metadata.next_cursor;
                     } else {
-                        self.total_servers = self.servers.len();
                         self.next_cursor = None;
                     }
+
+                    // FIXED: Use deduplicated count for accurate pagination
+                    // Previously used raw API count which showed "20 servers" when only 8 unique existed
+                    self.total_servers = self.servers.len();
                     self.error_message = None;
 
                     // Reset selection if out of bounds
@@ -383,16 +386,25 @@ impl MarketplaceView {
             return;
         }
 
-        // Show result count
-        ui.label(format!(
-            "Showing {} servers {}",
-            self.get_filtered_count(),
-            if self.total_servers > self.servers_per_page {
-                format!("(page {} of {})", self.current_page + 1, self.total_pages())
-            } else {
-                String::new()
-            }
-        ));
+        // Show result count with clarity about deduplication
+        let filtered_count = self.get_filtered_count();
+        ui.horizontal(|ui| {
+            ui.label(format!("Showing {} unique servers", filtered_count));
+            ui.label(
+                egui::RichText::new("(latest versions only)")
+                    .size(11.0)
+                    .color(egui::Color32::from_rgb(120, 120, 120))
+            )
+            .on_hover_text("Multiple versions of the same server are deduplicated. Only the latest stable release is shown.");
+        });
+
+        if self.total_servers > self.servers_per_page {
+            ui.label(format!(
+                "Page {} of {}",
+                self.current_page + 1,
+                self.total_pages()
+            ));
+        }
 
         ui.add_space(5.0);
 

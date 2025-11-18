@@ -76,6 +76,17 @@ pub struct JsonAgentConfig {
     /// Optional metadata (author, tags, version, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<AgentMetadata>,
+
+    /// MCP extensions enabled for this agent
+    ///
+    /// List of extension IDs (e.g., "ai.exa/exa") that should be loaded
+    /// and made available as tools for this agent.
+    ///
+    /// Extensions are agent-specific, not global. Different agents can
+    /// have different toolsets based on their purpose.
+    #[serde(rename = "mcpExtensions")]
+    #[serde(default)]
+    pub mcp_extensions: Vec<String>,
 }
 
 fn default_version() -> String {
@@ -439,6 +450,7 @@ mod tests {
             enabled: true,
             is_primary: false,
             metadata: None,
+            mcp_extensions: Vec::new(),
         };
 
         let result = config.validate();
@@ -469,6 +481,7 @@ mod tests {
             enabled: true,
             is_primary: false,
             metadata: None,
+            mcp_extensions: Vec::new(),
         };
 
         let result = config.validate();
@@ -495,6 +508,7 @@ mod tests {
             enabled: true,
             is_primary: false,
             metadata: None,
+            mcp_extensions: Vec::new(),
         };
 
         // Ollama doesn't require API key, validation should pass

@@ -214,6 +214,7 @@ mod tests {
             enabled: true,
             is_primary: false,
             web_search_enabled: true,
+            mcp_extensions: Vec::new(),
         };
 
         let tool = ToolDefinition::from_agent(&agent);
@@ -240,6 +241,7 @@ mod tests {
             enabled: true,
             is_primary: false,
             web_search_enabled: false,
+            mcp_extensions: Vec::new(),
         };
 
         let tool = ToolDefinition::from_agent(&agent);
@@ -263,6 +265,7 @@ mod tests {
             enabled: true,
             is_primary: true, // Primary agent
             web_search_enabled: false,
+            mcp_extensions: Vec::new(),
         };
 
         // This should panic
@@ -281,6 +284,7 @@ mod tests {
             enabled: false, // Disabled
             is_primary: false,
             web_search_enabled: true,
+            mcp_extensions: Vec::new(),
         };
 
         // This should panic
@@ -299,6 +303,7 @@ mod tests {
                 enabled: true,
                 is_primary: true, // Should be filtered out
                 web_search_enabled: false,
+                mcp_extensions: Vec::new(),
             },
             AgentConfig {
                 id: "web_search".to_string(),
@@ -309,6 +314,7 @@ mod tests {
                 enabled: true,
                 is_primary: false, // Should be included
                 web_search_enabled: true,
+                mcp_extensions: Vec::new(),
             },
             AgentConfig {
                 id: "code_helper".to_string(),
@@ -319,6 +325,7 @@ mod tests {
                 enabled: false, // Should be filtered out
                 is_primary: false,
                 web_search_enabled: false,
+                mcp_extensions: Vec::new(),
             },
         ];
 

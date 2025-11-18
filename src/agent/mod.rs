@@ -74,6 +74,12 @@ pub struct AgentConfig {
     /// Whether this agent has web search capabilities enabled
     #[serde(default)]
     pub web_search_enabled: bool,
+
+    /// MCP extensions enabled for this agent
+    /// List of extension IDs (e.g., "ai.exa/exa") that should be loaded
+    /// and made available as tools for this agent.
+    #[serde(default)]
+    pub mcp_extensions: Vec<String>,
 }
 
 impl AgentConfig {
@@ -88,6 +94,7 @@ impl AgentConfig {
             enabled: true,
             is_primary: false,  // Default to specialist agent
             web_search_enabled: false,
+            mcp_extensions: Vec::new(),
         }
     }
 
@@ -102,6 +109,7 @@ impl AgentConfig {
             enabled: true,
             is_primary: true,  // Assistant is the primary agent
             web_search_enabled: false,
+            mcp_extensions: Vec::new(),
         }
     }
 

@@ -50,6 +50,7 @@ Format your responses clearly with:
         enabled: true,
         is_primary: false,  // Specialist agent, not primary
         web_search_enabled: true,
+        mcp_extensions: Vec::new(),  // No MCP extensions by default
     }
 }
 

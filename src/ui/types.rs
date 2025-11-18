@@ -16,17 +16,29 @@ pub struct VisualEvent {
 pub enum AppView {
     Chat,
     Settings,
-    Plugins,
     Events,
-    Marketplace,
+    Extensions,
 }
 
 /// Settings sub-view
 #[derive(PartialEq, Clone)]
 pub enum SettingsView {
-    AiSettings,
     SystemPrompts,
     Agents,
+}
+
+/// Extensions sub-view (Marketplace, Remote, Local)
+#[derive(PartialEq, Clone)]
+pub enum ExtensionsView {
+    Marketplace,  // Browse available MCP servers
+    Remote,       // Manage remote/cloud services
+    Local,        // View locally installed plugins
+}
+
+impl Default for ExtensionsView {
+    fn default() -> Self {
+        Self::Marketplace
+    }
 }
 
 /// System prompts configuration
@@ -49,6 +61,8 @@ pub struct ChatMessage {
     pub content: String,
     pub input_tokens: Option<u32>,
     pub output_tokens: Option<u32>,
+    /// Embedded image data URLs (extracted from markdown for easy access)
+    pub embedded_images: Vec<String>,
 }
 
 /// Token usage statistics
