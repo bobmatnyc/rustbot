@@ -1,3 +1,12 @@
+---
+title: QA Checklist
+category: QA
+audience: QA, Developer
+reading_time: 8 minutes
+last_updated: 2025-01-17
+status: Complete
+---
+
 # QA Checklist: Phase 1 Refactoring
 
 **Project**: Rustbot - Service Layer Refactoring
@@ -481,9 +490,9 @@ cargo build --bin rustbot
 ### Useful Links
 
 - [QA Validation Report](./QA_VALIDATION_REPORT.md)
-- [Prototype Refactoring Guide](./PROTOTYPE_REFACTORING.md)
-- [Architecture Documentation](./ARCHITECTURE_INDEX.md)
-- [Quick Start Guide](./QUICK_START.md)
+- [Prototype Refactoring Guide](../architecture/implementation/PROTOTYPE_REFACTORING.md)
+- [Architecture Documentation](../ARCHITECTURE_INDEX.md)
+- [Quick Start Guide](../guides/QUICK_START.md)
 
 ---
 

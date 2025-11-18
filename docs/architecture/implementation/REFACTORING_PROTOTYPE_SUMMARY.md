@@ -1,3 +1,12 @@
+---
+title: Refactoring Prototype Summary
+category: Architecture
+audience: Developer
+reading_time: 20 minutes
+last_updated: 2025-01-17
+status: Complete
+---
+
 # Dependency Injection Prototype - Complete Summary
 
 **Date**: 2025-11-17

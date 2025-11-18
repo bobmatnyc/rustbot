@@ -1,3 +1,12 @@
+---
+title: Testing Methods
+category: QA
+audience: Developer, QA
+reading_time: 12 minutes
+last_updated: 2025-01-17
+status: Complete
+---
+
 # Direct Testing Methods for Rustbot
 
 This document contains methods for directly testing functionality without relying on the UI or full integration.

@@ -655,8 +655,8 @@ stateDiagram-v2
 
 - [Architecture Diagrams](./ARCHITECTURE_DIAGRAMS.md) - Visual architecture
 - [Refactoring Timeline](./REFACTORING_TIMELINE.md) - Project timeline
-- [Refactoring Plan](../RUSTBOT_REFACTORING_PLAN.md) - Detailed plan
-- [Phase 1 Summary](../PHASE1_IMPLEMENTATION_SUMMARY.md) - Completed work
+- [Refactoring Plan](../planning/RUSTBOT_REFACTORING_PLAN.md) - Detailed plan
+- [Phase 1 Summary](../implementation/PHASE1_IMPLEMENTATION_SUMMARY.md) - Completed work
 
 ---
 

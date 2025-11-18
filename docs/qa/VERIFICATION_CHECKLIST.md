@@ -1,3 +1,12 @@
+---
+title: Verification Checklist
+category: QA
+audience: QA, Developer
+reading_time: 5 minutes
+last_updated: 2025-01-17
+status: Complete
+---
+
 # Marketplace Pagination Fix - Verification Checklist
 
 **Date**: 2025-11-16

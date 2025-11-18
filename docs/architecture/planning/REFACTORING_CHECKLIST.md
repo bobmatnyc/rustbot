@@ -1,3 +1,12 @@
+---
+title: Refactoring Checklist
+category: Architecture
+audience: Developer, PM
+reading_time: 10 minutes
+last_updated: 2025-01-17
+status: Complete
+---
+
 # Rustbot Refactoring Checklist
 
 Quick reference checklist for implementing the architectural refactoring plan.

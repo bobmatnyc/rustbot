@@ -132,7 +132,7 @@ pub trait AgentService: Send + Sync {
 
 ### Visual Diagrams (4 Documents, 32 Diagrams)
 
-#### 1. Architecture Diagrams (`docs/diagrams/ARCHITECTURE_DIAGRAMS.md` - 900 lines)
+#### 1. Architecture Diagrams (`docs/architecture/diagrams/ARCHITECTURE_DIAGRAMS.md` - 900 lines)
 - **Current State** (4 diagrams) - Existing Rustbot architecture
 - **Phase 1** (6 diagrams) - Service layer extraction
 - **Phase 2** (5 diagrams) - DI container integration
@@ -140,19 +140,19 @@ pub trait AgentService: Send + Sync {
 - **Phase 4** (4 diagrams) - Event-driven architecture
 - **Cross-cutting** (5 diagrams) - Testing, deployment, migration
 
-#### 2. Phase 1 Diagrams (`docs/diagrams/PHASE1_DIAGRAMS.md` - 450 lines)
+#### 2. Phase 1 Diagrams (`docs/architecture/diagrams/PHASE1_DIAGRAMS.md` - 450 lines)
 - Trait hierarchy and relationships
 - Before/after transformation
 - Migration path visualization
 - Test implementation patterns
 
-#### 3. Prototype Diagrams (`docs/diagrams/PROTOTYPE_DIAGRAMS.md` - 350 lines)
+#### 3. Prototype Diagrams (`docs/architecture/diagrams/PROTOTYPE_DIAGRAMS.md` - 350 lines)
 - Working example architecture
 - Initialization flow
 - Message handling lifecycle
 - Testing patterns
 
-#### 4. Quick Reference (`docs/diagrams/QUICK_REFERENCE.md` - 280 lines)
+#### 4. Quick Reference (`docs/architecture/diagrams/QUICK_REFERENCE.md` - 280 lines)
 - Service layer cheat sheet
 - Common patterns and recipes
 - Testing quick start
@@ -390,7 +390,7 @@ docs/
 ├── TESTING_GUIDE.md                       (~350 lines)
 └── MIGRATION_GUIDE.md                     (~450 lines)
 
-docs/diagrams/
+docs/architecture/diagrams/
 ├── ARCHITECTURE_DIAGRAMS.md               (~900 lines)
 ├── PHASE1_DIAGRAMS.md                     (~450 lines)
 ├── PROTOTYPE_DIAGRAMS.md                  (~350 lines)
@@ -886,7 +886,7 @@ git commit -m "feat: implement Phase 1 service layer with trait abstractions
 Test Performance: 22.7x faster (55.36s → 2.44s)
 Known Issues: 6 agent service tests failing (runtime nesting)
 
-Refs: docs/PHASE1_IMPLEMENTATION_SUMMARY.md"
+Refs: docs/architecture/implementation/PHASE1_IMPLEMENTATION_SUMMARY.md"
 
 # Documentation Suite
 git add docs/
@@ -900,7 +900,7 @@ git commit -m "docs: add comprehensive architecture documentation and diagrams
 
 Total: ~6,500 lines of documentation across 13 files
 
-Refs: docs/RUSTBOT_REFACTORING_PLAN.md"
+Refs: docs/architecture/planning/RUSTBOT_REFACTORING_PLAN.md"
 
 # Examples
 git add examples/
@@ -913,7 +913,7 @@ git commit -m "examples: add refactored application examples
 
 Demonstrates trait-based DI and testing patterns.
 
-Refs: docs/PROTOTYPE_REFACTORING.md"
+Refs: docs/architecture/implementation/PROTOTYPE_REFACTORING.md"
 
 # Dependencies
 git add Cargo.toml src/lib.rs
@@ -933,21 +933,21 @@ Modified:
   M src/lib.rs
 
 Untracked:
-  ?? docs/RUST_ARCHITECTURE_BEST_PRACTICES.md
-  ?? docs/RUSTBOT_REFACTORING_PLAN.md
-  ?? docs/ARCHITECTURE_RESEARCH_SUMMARY.md
-  ?? docs/PHASE1_IMPLEMENTATION_SUMMARY.md
-  ?? docs/PROTOTYPE_REFACTORING.md
+  ?? docs/architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md
+  ?? docs/architecture/planning/RUSTBOT_REFACTORING_PLAN.md
+  ?? docs/architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md
+  ?? docs/architecture/implementation/PHASE1_IMPLEMENTATION_SUMMARY.md
+  ?? docs/architecture/implementation/PROTOTYPE_REFACTORING.md
   ?? docs/REFACTORING_CHECKLIST.md
-  ?? docs/QA_VALIDATION_REPORT.md
-  ?? docs/QUICK_START.md
+  ?? docs/qa/QA_VALIDATION_REPORT.md
+  ?? docs/guides/QUICK_START.md
   ?? docs/SERVICE_LAYER_REFERENCE.md
   ?? docs/TESTING_GUIDE.md
   ?? docs/MIGRATION_GUIDE.md
-  ?? docs/diagrams/ARCHITECTURE_DIAGRAMS.md
-  ?? docs/diagrams/PHASE1_DIAGRAMS.md
-  ?? docs/diagrams/PROTOTYPE_DIAGRAMS.md
-  ?? docs/diagrams/QUICK_REFERENCE.md
+  ?? docs/architecture/diagrams/ARCHITECTURE_DIAGRAMS.md
+  ?? docs/architecture/diagrams/PHASE1_DIAGRAMS.md
+  ?? docs/architecture/diagrams/PROTOTYPE_DIAGRAMS.md
+  ?? docs/architecture/diagrams/QUICK_REFERENCE.md
   ?? docs/progress/2025-01-17-architecture-research.md
   ?? src/services/
   ?? examples/refactored_basic.rs
@@ -2153,18 +2153,18 @@ Project Managers:     4/13 documents (31%)
 ### Primary Documentation
 
 #### Strategic Planning
-- **`docs/RUSTBOT_REFACTORING_PLAN.md`** - Complete 4-phase roadmap
-- **`docs/RUST_ARCHITECTURE_BEST_PRACTICES.md`** - Research and best practices
-- **`docs/ARCHITECTURE_RESEARCH_SUMMARY.md`** - Key findings and ADRs
+- **`docs/architecture/planning/RUSTBOT_REFACTORING_PLAN.md`** - Complete 4-phase roadmap
+- **`docs/architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md`** - Research and best practices
+- **`docs/architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md`** - Key findings and ADRs
 
 #### Implementation Guides
-- **`docs/QUICK_START.md`** - Getting started (15-minute intro)
-- **`docs/PHASE1_IMPLEMENTATION_SUMMARY.md`** - Phase 1 details
-- **`docs/PROTOTYPE_REFACTORING.md`** - Working example walkthrough
+- **`docs/guides/QUICK_START.md`** - Getting started (15-minute intro)
+- **`docs/architecture/implementation/PHASE1_IMPLEMENTATION_SUMMARY.md`** - Phase 1 details
+- **`docs/architecture/implementation/PROTOTYPE_REFACTORING.md`** - Working example walkthrough
 - **`docs/REFACTORING_CHECKLIST.md`** - Task tracking
 
 #### Testing and Quality
-- **`docs/QA_VALIDATION_REPORT.md`** - Complete test results
+- **`docs/qa/QA_VALIDATION_REPORT.md`** - Complete test results
 - **`docs/TESTING_GUIDE.md`** - Testing philosophy and patterns
 
 #### Reference Documentation
@@ -2173,10 +2173,10 @@ Project Managers:     4/13 documents (31%)
 
 ### Visual Diagrams
 
-- **`docs/diagrams/ARCHITECTURE_DIAGRAMS.md`** - 28 architecture diagrams
-- **`docs/diagrams/PHASE1_DIAGRAMS.md`** - 8 Phase 1 diagrams
-- **`docs/diagrams/PROTOTYPE_DIAGRAMS.md`** - 6 example diagrams
-- **`docs/diagrams/QUICK_REFERENCE.md`** - Visual cheat sheet
+- **`docs/architecture/diagrams/ARCHITECTURE_DIAGRAMS.md`** - 28 architecture diagrams
+- **`docs/architecture/diagrams/PHASE1_DIAGRAMS.md`** - 8 Phase 1 diagrams
+- **`docs/architecture/diagrams/PROTOTYPE_DIAGRAMS.md`** - 6 example diagrams
+- **`docs/architecture/diagrams/QUICK_REFERENCE.md`** - Visual cheat sheet
 
 ### Implementation Files
 

@@ -1,3 +1,12 @@
+---
+title: Documentation Review
+category: Review
+audience: All
+reading_time: 15 minutes
+last_updated: 2025-01-17
+status: Complete
+---
+
 # Documentation Review and Validation
 
 **Review Date**: November 17, 2025

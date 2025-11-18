@@ -6,7 +6,7 @@ This document serves as the central index for all architecture-related documenta
 
 ## ⚡ Quick Start
 
-**New to the refactoring project?** Start here: **[QUICK_START.md](./QUICK_START.md)**
+**New to the refactoring project?** Start here: **[QUICK_START.md](guides/QUICK_START.md)**
 
 - **5-minute orientation** for new developers
 - **Decision tree**: "Which doc should I read?"
@@ -19,7 +19,7 @@ This document serves as the central index for all architecture-related documenta
 
 ### Core Architecture Guides
 
-1. **[QUICK_START.md](./QUICK_START.md)** **← START HERE**
+1. **[QUICK_START.md](guides/QUICK_START.md)** **← START HERE**
    - **Purpose**: 5-minute orientation and fast-track guide
    - **Audience**: Everyone (first-time readers)
    - **Length**: ~5 minutes reading time
@@ -30,7 +30,7 @@ This document serves as the central index for all architecture-related documenta
      - Current progress overview
    - **Use When**: First time, need quick orientation
 
-2. **[RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md)**
+2. **[RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md)**
    - **Purpose**: Comprehensive guide to Rust architectural patterns (general, applicable to any Rust project)
    - **Audience**: Rust developers, architects
    - **Length**: ~800 lines
@@ -43,7 +43,7 @@ This document serves as the central index for all architecture-related documenta
      - Tokio async best practices
    - **Use When**: Learning Rust architecture patterns, making architectural decisions
 
-3. **[RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md)**
+3. **[RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md)**
    - **Purpose**: Concrete refactoring plan specific to Rustbot codebase
    - **Audience**: Rustbot contributors
    - **Length**: ~600 lines
@@ -56,7 +56,7 @@ This document serves as the central index for all architecture-related documenta
      - Success criteria
    - **Use When**: Implementing the refactoring, understanding the migration path
 
-4. **[ARCHITECTURE_RESEARCH_SUMMARY.md](./ARCHITECTURE_RESEARCH_SUMMARY.md)**
+4. **[ARCHITECTURE_RESEARCH_SUMMARY.md](architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md)**
    - **Purpose**: Executive summary of architecture research findings
    - **Audience**: Decision-makers, quick reference
    - **Length**: ~400 lines
@@ -67,7 +67,7 @@ This document serves as the central index for all architecture-related documenta
      - Next steps
    - **Use When**: Quick reference, presenting to stakeholders
 
-5. **[REFACTORING_CHECKLIST.md](./REFACTORING_CHECKLIST.md)**
+5. **[REFACTORING_CHECKLIST.md](architecture/planning/REFACTORING_CHECKLIST.md)**
    - **Purpose**: Step-by-step implementation checklist
    - **Audience**: Developers implementing the refactoring
    - **Length**: ~300 lines
@@ -87,14 +87,14 @@ This document serves as the central index for all architecture-related documenta
 
 | What You Need | Where to Look |
 |---------------|---------------|
-| **Learn Rust DI patterns** | [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md) §1 |
-| **Understand service architecture** | [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md) §2 |
-| **See Rustbot-specific examples** | [RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md) §4 |
-| **Start refactoring** | [REFACTORING_CHECKLIST.md](./REFACTORING_CHECKLIST.md) |
-| **Understand testing strategy** | [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md) §4 |
-| **Avoid anti-patterns** | [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md) §5 |
-| **Quick reference ADRs** | [ARCHITECTURE_RESEARCH_SUMMARY.md](./ARCHITECTURE_RESEARCH_SUMMARY.md) §ADRs |
-| **Implementation timeline** | [RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md) §3 |
+| **Learn Rust DI patterns** | [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) §1 |
+| **Understand service architecture** | [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) §2 |
+| **See Rustbot-specific examples** | [RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md) §4 |
+| **Start refactoring** | [REFACTORING_CHECKLIST.md](architecture/planning/REFACTORING_CHECKLIST.md) |
+| **Understand testing strategy** | [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) §4 |
+| **Avoid anti-patterns** | [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) §5 |
+| **Quick reference ADRs** | [ARCHITECTURE_RESEARCH_SUMMARY.md](architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md) §ADRs |
+| **Implementation timeline** | [RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md) §3 |
 
 ### By Audience
 
@@ -133,7 +133,7 @@ impl AgentService {
 }
 ```
 
-**Read More**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md) §1
+**Read More**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) §1
 
 ### Service-Oriented Architecture
 
@@ -143,7 +143,7 @@ impl AgentService {
 3. **Repository**: Data access abstraction (trait interfaces)
 4. **Infrastructure**: External systems (filesystem, network, DB)
 
-**Read More**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md) §2
+**Read More**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) §2
 
 ### Testing Strategy
 
@@ -151,7 +151,7 @@ impl AgentService {
 **Integration Tests**: Real implementations in isolated environments
 **Property-Based Tests**: Invariants with `proptest`
 
-**Read More**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md) §4
+**Read More**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) §4
 
 ---
 
@@ -160,17 +160,17 @@ impl AgentService {
 ### ADR-1: Manual DI Over Framework
 **Decision**: Use manual trait-based DI instead of framework
 **Rationale**: Rustbot is small (~5k LOC), manual DI is simple and explicit
-**Read More**: [ARCHITECTURE_RESEARCH_SUMMARY.md](./ARCHITECTURE_RESEARCH_SUMMARY.md) §ADR-1
+**Read More**: [ARCHITECTURE_RESEARCH_SUMMARY.md](architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md) §ADR-1
 
 ### ADR-2: Arc<dyn Trait> for Runtime Polymorphism
 **Decision**: Use `Arc<dyn Trait>` instead of generic bounds
 **Rationale**: Runtime flexibility, smaller binary, easier UI integration
-**Read More**: [ARCHITECTURE_RESEARCH_SUMMARY.md](./ARCHITECTURE_RESEARCH_SUMMARY.md) §ADR-2
+**Read More**: [ARCHITECTURE_RESEARCH_SUMMARY.md](architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md) §ADR-2
 
 ### ADR-3: Layered Architecture (Not Hexagonal)
 **Decision**: Start with simple layered architecture, defer hexagonal
 **Rationale**: Current complexity doesn't justify hexagonal, YAGNI principle
-**Read More**: [ARCHITECTURE_RESEARCH_SUMMARY.md](./ARCHITECTURE_RESEARCH_SUMMARY.md) §ADR-3
+**Read More**: [ARCHITECTURE_RESEARCH_SUMMARY.md](architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md) §ADR-3
 
 ---
 
@@ -184,7 +184,7 @@ impl AgentService {
 | **Phase 4** | Week 6 | UI migration, deprecate old code, documentation updates |
 
 **Total Duration**: 6 weeks
-**Read More**: [RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md) §3
+**Read More**: [RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md) §3
 
 ---
 
@@ -204,7 +204,7 @@ impl AgentService {
                 - Full app testing
 ```
 
-**Read More**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md) §4
+**Read More**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) §4
 
 ---
 
@@ -218,7 +218,7 @@ impl AgentService {
 4. **Blocking in async**: Use `tokio::fs`, not `std::fs`
 5. **Global state**: Use constructor injection instead
 
-**Read More**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md) §5
+**Read More**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) §5
 
 ### Critical Gotcha: mockall + async_trait
 
@@ -238,7 +238,7 @@ trait MyTrait {
 trait MyTrait { ... }
 ```
 
-**Read More**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md) §4.1
+**Read More**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) §4.1
 
 ---
 
@@ -256,7 +256,7 @@ trait MyTrait { ... }
 - ✅ Easy to swap implementations
 - ✅ Clear separation of concerns
 
-**Read More**: [RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md) §6
+**Read More**: [RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md) §6
 
 ---
 
@@ -291,28 +291,28 @@ Progress logs documenting implementation work:
 ### For New Contributors
 
 **⚡ Fast Track** (5 minutes):
-1. [QUICK_START.md](./QUICK_START.md) - Get oriented quickly
+1. [QUICK_START.md](guides/QUICK_START.md) - Get oriented quickly
 
 **Complete Path** (2-3 hours):
-1. **Start Here**: [QUICK_START.md](./QUICK_START.md)
+1. **Start Here**: [QUICK_START.md](guides/QUICK_START.md)
    - 5-minute orientation
    - Decision tree for finding right docs
 
-2. **Overview**: [ARCHITECTURE_RESEARCH_SUMMARY.md](./ARCHITECTURE_RESEARCH_SUMMARY.md)
+2. **Overview**: [ARCHITECTURE_RESEARCH_SUMMARY.md](architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md)
    - Quick overview of key concepts
    - Architectural decisions with rationale
 
-3. **Deep Dive**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md)
+3. **Deep Dive**: [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md)
    - Comprehensive patterns and examples
    - Testing strategies
    - Anti-patterns to avoid
 
-4. **Apply to Rustbot**: [RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md)
+4. **Apply to Rustbot**: [RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md)
    - See how patterns apply to actual codebase
    - Before/after examples
    - Migration strategy
 
-5. **Implement**: [REFACTORING_CHECKLIST.md](./REFACTORING_CHECKLIST.md)
+5. **Implement**: [REFACTORING_CHECKLIST.md](architecture/planning/REFACTORING_CHECKLIST.md)
    - Step-by-step tasks
    - Validation criteria
    - Common pitfalls
@@ -320,10 +320,10 @@ Progress logs documenting implementation work:
 ### For Experienced Rust Developers
 
 **Fast Track** (1 hour):
-1. [QUICK_START.md](./QUICK_START.md) - Decision tree and gotchas
-2. [ARCHITECTURE_RESEARCH_SUMMARY.md](./ARCHITECTURE_RESEARCH_SUMMARY.md) (ADRs section)
-3. [RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md) (concrete examples)
-4. [REFACTORING_CHECKLIST.md](./REFACTORING_CHECKLIST.md) (implementation tasks)
+1. [QUICK_START.md](guides/QUICK_START.md) - Decision tree and gotchas
+2. [ARCHITECTURE_RESEARCH_SUMMARY.md](architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md) (ADRs section)
+3. [RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md) (concrete examples)
+4. [REFACTORING_CHECKLIST.md](architecture/planning/REFACTORING_CHECKLIST.md) (implementation tasks)
 
 ---
 
@@ -365,19 +365,19 @@ ARCHITECTURE_INDEX.md (you are here)
 ## 📞 Getting Help
 
 ### Questions About Architecture?
-- Read [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md)
+- Read [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md)
 - Check [Rust Design Patterns Book](https://rust-unofficial.github.io/patterns/)
 - Ask in Rustbot discussions
 
 ### Questions About Refactoring Plan?
-- Read [RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md)
-- Check [REFACTORING_CHECKLIST.md](./REFACTORING_CHECKLIST.md)
+- Read [RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md)
+- Check [REFACTORING_CHECKLIST.md](architecture/planning/REFACTORING_CHECKLIST.md)
 - Review session logs in `progress/`
 
 ### Stuck on Implementation?
-- Consult [REFACTORING_CHECKLIST.md](./REFACTORING_CHECKLIST.md) (Common Pitfalls section)
-- Review code examples in [RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md) §4
-- Check anti-patterns in [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md) §5
+- Consult [REFACTORING_CHECKLIST.md](architecture/planning/REFACTORING_CHECKLIST.md) (Common Pitfalls section)
+- Review code examples in [RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md) §4
+- Check anti-patterns in [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) §5
 
 ---
 
@@ -396,7 +396,7 @@ ARCHITECTURE_INDEX.md (you are here)
 2. **Discuss**: Review with team/stakeholders
 3. **Approve**: Get sign-off on refactoring approach
 4. **Begin**: Start Phase 1 (extract trait interfaces)
-5. **Track**: Update [REFACTORING_CHECKLIST.md](./REFACTORING_CHECKLIST.md) as you progress
+5. **Track**: Update [REFACTORING_CHECKLIST.md](architecture/planning/REFACTORING_CHECKLIST.md) as you progress
 
 ---
 

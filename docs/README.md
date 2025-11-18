@@ -4,306 +4,316 @@ Welcome to the Rustbot documentation system. This directory contains comprehensi
 
 ---
 
-## Quick Start
+## Quick Navigation
 
-### New to Rustbot?
+### 🚀 New to Rustbot?
 
-1. **[Project README](../README.md)** - Start here for project overview and quick start
-2. **[Development Guide](../DEVELOPMENT.md)** - Complete workflow guide (600+ lines)
-3. **[Agent Configuration](../agents/README.md)** - Configure AI agents
+1. **[Project README](../README.md)** - Project overview and quick start
+2. **[Quick Start Guide](guides/QUICK_START.md)** - Get Rustbot running in 5 minutes
+3. **[Development Guide](../DEVELOPMENT.md)** - Comprehensive development workflow (600+ lines)
+4. **[Agent Configuration](../agents/README.md)** - Configure AI agents
 
-### Looking for Something Specific?
+### 📚 Documentation Sections
 
-**See [INDEX.md](INDEX.md) for the complete documentation catalog** organized by topic with descriptions and use cases.
+| Section | Description | Key Documents |
+|---------|-------------|---------------|
+| **[Architecture](architecture/)** | System design, refactoring plans, diagrams | [Best Practices](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md), [Refactoring Plan](architecture/planning/RUSTBOT_REFACTORING_PLAN.md), [Diagrams](architecture/diagrams/) |
+| **[Guides](guides/)** | Quick start guides and tutorials | [Quick Start](guides/QUICK_START.md), [Refactoring Guide](guides/QUICK_START_REFACTORING.md), [MCP Guide](guides/MCP_QUICKSTART.md) |
+| **[QA](qa/)** | Testing, validation, quality assurance | [Testing Methods](qa/TESTING_METHODS.md), [QA Checklist](qa/QA_CHECKLIST.md), [Validation Reports](qa/QA_VALIDATION_REPORT.md) |
+| **[Reviews](reviews/)** | Documentation and code reviews | [Documentation Review](reviews/DOCUMENTATION_REVIEW.md) |
+| **[Progress](progress/)** | Development session logs | [Latest Sessions](progress/) |
+| **[Fixes](fixes/)** | Bug fixes and issue resolutions | [Recent Fixes](fixes/) |
 
 ---
 
-## Documentation Organization
+## Quick Access by Role
 
-### Root Directory (`/`)
-Essential project documentation:
-- **README.md** - Project overview and quick start
-- **DEVELOPMENT.md** - Comprehensive development workflow guide
-- **CLAUDE.md** - AI assistant integration guide
-- **VERSION_MANAGEMENT.md** - Version numbering and release guide
+### 👨‍💻 For Developers
 
-### Core Documentation (`docs/`)
+**Getting Started:**
+1. [Quick Start Guide](guides/QUICK_START.md) - Setup and basic usage
+2. [Development Guide](../DEVELOPMENT.md) - Full development workflow
+3. [Architecture Overview](architecture/diagrams/ARCHITECTURE_DIAGRAMS.md) - Visual system overview
+
+**Working on Refactoring:**
+1. [Refactoring Plan](architecture/planning/RUSTBOT_REFACTORING_PLAN.md) - Overall strategy
+2. [Refactoring Checklist](architecture/planning/REFACTORING_CHECKLIST.md) - Track progress
+3. [Refactoring Guide](guides/QUICK_START_REFACTORING.md) - Step-by-step workflow
+
+**Implementing Features:**
+1. [Architecture Best Practices](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) - Rust patterns
+2. [Data Flow](architecture/diagrams/DATA_FLOW.md) - Understand system interactions
+3. [Testing Methods](qa/TESTING_METHODS.md) - Test your changes
+
+### 🎯 For QA Engineers
+
+**Testing Workflow:**
+1. [Testing Methods](qa/TESTING_METHODS.md) - Comprehensive testing guide
+2. [QA Checklist](qa/QA_CHECKLIST.md) - Standard validation procedures
+3. [Verification Checklist](qa/VERIFICATION_CHECKLIST.md) - Feature-specific verification
+
+**Validation:**
+1. [QA Validation Report](qa/QA_VALIDATION_REPORT.md) - Report template
+2. [Prototype Test Results](architecture/implementation/PROTOTYPE_TEST_RESULTS.md) - Example test results
+
+### 🏗️ For Architects
+
+**Architecture Documentation:**
+1. [Rust Architecture Best Practices](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) - Patterns and principles
+2. [Architecture Research](architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md) - Research findings
+3. [Architecture Diagrams](architecture/diagrams/ARCHITECTURE_DIAGRAMS.md) - Visual documentation
+4. [Data Flow](architecture/diagrams/DATA_FLOW.md) - System interactions
+
+**Planning:**
+1. [Refactoring Plan](architecture/planning/RUSTBOT_REFACTORING_PLAN.md) - Strategic direction
+2. [Refactoring Timeline](architecture/diagrams/REFACTORING_TIMELINE.md) - Visual timeline
+
+### 📋 For Project Managers
+
+**Status & Progress:**
+1. [Progress Logs](progress/) - Recent development sessions
+2. [Refactoring Checklist](architecture/planning/REFACTORING_CHECKLIST.md) - Track completion
+
+**Planning:**
+1. [Refactoring Plan](architecture/planning/RUSTBOT_REFACTORING_PLAN.md) - Overall strategy
+2. [QA Validation Reports](qa/QA_VALIDATION_REPORT.md) - Quality status
+
+### 📖 For New Contributors
+
+**Onboarding Path:**
+1. [Quick Start Guide](guides/QUICK_START.md) - Get running (~5 min)
+2. [Development Guide](../DEVELOPMENT.md) - Learn workflow (~30 min)
+3. [Architecture Overview](architecture/diagrams/ARCHITECTURE_DIAGRAMS.md) - Understand system (~15 min)
+4. [Best Practices](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) - Learn patterns (~20 min)
+5. [Recent Progress](progress/) - Current context (~10 min)
+
+---
+
+## Quick Access by Task
+
+| Task | Documentation |
+|------|---------------|
+| **Get Rustbot running** | [Quick Start Guide](guides/QUICK_START.md) |
+| **Set up development environment** | [Development Guide](../DEVELOPMENT.md) |
+| **Understand system architecture** | [Architecture Diagrams](architecture/diagrams/ARCHITECTURE_DIAGRAMS.md) |
+| **Work on refactoring** | [Refactoring Guide](guides/QUICK_START_REFACTORING.md) |
+| **Follow best practices** | [Rust Best Practices](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) |
+| **Test features** | [Testing Methods](qa/TESTING_METHODS.md) |
+| **Validate releases** | [QA Checklist](qa/QA_CHECKLIST.md) |
+| **Set up MCP plugins** | [MCP Quick Start](guides/MCP_QUICKSTART.md) |
+| **Create diagrams** | [Diagram Creation Guide](architecture/diagrams/DIAGRAM_CREATION_SUMMARY.md) |
+| **Review documentation** | [Documentation Review](reviews/DOCUMENTATION_REVIEW.md) |
+| **Track progress** | [Progress Logs](progress/) |
+| **Fix bugs** | [Bug Fixes](fixes/) |
+
+---
+
+## Documentation Structure
 
 ```
 docs/
-├── README.md (this file)      # Documentation overview
-├── INDEX.md                    # Complete documentation catalog
-├── ARCHITECTURE.md             # Core system architecture
-├── AGENT_EVENT_ARCHITECTURE.md # Agent/event system (46KB detailed spec)
-├── API.md                      # Complete API reference
+├── README.md (this file)           # Documentation hub and navigation
 │
-├── design/                     # Feature design documents
-│   ├── AGENT_DELEGATION_DESIGN.md
-│   ├── CONTEXT_MANAGEMENT_DESIGN.md
-│   ├── EVENT_VISUALIZATION_DESIGN.md
-│   ├── TOOL_REGISTRATION_DESIGN.md
-│   └── PROTOCOL_RESEARCH_FINDINGS.md
+├── architecture/                    # Architecture & design documentation
+│   ├── README.md                   # Architecture navigation
+│   ├── best-practices/             # Rust architecture best practices
+│   ├── planning/                   # Refactoring plans and research
+│   ├── implementation/             # Implementation summaries and prototypes
+│   └── diagrams/                   # Visual architecture diagrams
 │
-├── development/                # Development history
-│   └── REFACTORING.md
+├── guides/                         # User guides and tutorials
+│   ├── README.md                   # Guides navigation
+│   ├── QUICK_START.md              # General quick start
+│   ├── QUICK_START_REFACTORING.md  # Refactoring workflow guide
+│   └── MCP_QUICKSTART.md           # MCP integration guide
 │
-├── PRD/                        # Product & planning
-│   └── development-plan.md
+├── qa/                             # Quality assurance documentation
+│   ├── README.md                   # QA navigation
+│   ├── TESTING_METHODS.md          # Testing methodologies
+│   ├── QA_CHECKLIST.md             # Standard QA checklist
+│   ├── VERIFICATION_CHECKLIST.md   # Feature verification
+│   └── QA_VALIDATION_REPORT.md     # Validation reports
 │
-├── progress/                   # Current development logs
-│   ├── 2025-11-15-*.md        # Current work
-│   ├── 2025-11-14-*.md
-│   └── 2025-11-13-*.md        # Recent work
+├── reviews/                        # Documentation and code reviews
+│   ├── README.md                   # Reviews navigation
+│   └── DOCUMENTATION_REVIEW.md     # Documentation review
 │
-└── archive/                    # Historical documentation
-    ├── fixes/                  # Historical bug fixes
-    ├── debug/                  # Old debug docs
-    └── progress/               # Old progress logs
-        ├── 2025-11-13/
-        └── 2025-11-12/
+├── progress/                       # Development session logs
+│   └── YYYY-MM-DD-*.md             # Dated session logs
+│
+└── fixes/                          # Bug fixes and issue resolutions
+    └── YYYY-MM-DD-*.md             # Dated fix documentation
 ```
-
----
-
-## How to Navigate the Documentation
-
-### By Role
-
-**New Developer:**
-1. Read `/README.md` (10 min)
-2. Read `/DEVELOPMENT.md` (30 min)
-3. Skim `/docs/ARCHITECTURE.md` (15 min)
-4. Browse `/docs/progress/` for recent context (10 min)
-
-**Experienced Contributor:**
-1. Check `/docs/progress/` for latest work
-2. Review `/docs/INDEX.md` for specific topics
-3. Reference `/DEVELOPMENT.md` for workflows
-4. Consult `/docs/design/` for feature specs
-
-**API User / Integrator:**
-1. Read `/docs/API.md` (complete API reference)
-2. Reference `/agents/README.md` for agent setup
-3. Check examples in API.md
-
-**Project Manager / Stakeholder:**
-1. Read `/README.md` (project status)
-2. Review `/docs/PRD/development-plan.md` (roadmap)
-3. Check `/docs/progress/` for recent updates
-
-### By Topic
-
-**Architecture & Design:**
-- Core: `/docs/ARCHITECTURE.md`
-- Agents: `/docs/AGENT_EVENT_ARCHITECTURE.md`
-- Features: `/docs/design/`
-
-**Development:**
-- Workflow: `/DEVELOPMENT.md`
-- History: `/docs/development/REFACTORING.md`
-- Recent: `/docs/progress/`
-
-**API & Integration:**
-- API Reference: `/docs/API.md`
-- Agents: `/agents/README.md`
-
-**Planning:**
-- Roadmap: `/docs/PRD/development-plan.md`
-- Versions: `/VERSION_MANAGEMENT.md`
-
-**See [INDEX.md](INDEX.md) for complete catalog with detailed descriptions.**
-
----
-
-## Common Questions
-
-### Where do I find...?
-
-**Q: How do I set up my development environment?**
-A: Read `/DEVELOPMENT.md` - comprehensive 600+ line guide covering everything from installation to advanced workflows.
-
-**Q: How do I create a custom agent?**
-A: Read `/agents/README.md` - complete guide with examples and schema.
-
-**Q: What's the overall architecture?**
-A: Start with `/docs/ARCHITECTURE.md`, then dive into `/docs/AGENT_EVENT_ARCHITECTURE.md` for details.
-
-**Q: How do I use Rustbot programmatically?**
-A: Read `/docs/API.md` - complete API reference with code examples.
-
-**Q: What changed recently?**
-A: Check `/docs/progress/2025-11-15-*.md` for current work.
-
-**Q: How do I troubleshoot build issues?**
-A: See `/DEVELOPMENT.md` Troubleshooting section - covers common issues and solutions.
-
-**Q: Where is the changelog?**
-A: Check `/docs/progress/` for detailed development logs organized by date.
-
-**Q: How do I make a release?**
-A: Follow `/VERSION_MANAGEMENT.md` for version procedures.
-
-### How do I contribute documentation?
-
-1. **Check if doc already exists**: Review [INDEX.md](INDEX.md)
-2. **Determine category**:
-   - Core architecture → `/docs/ARCHITECTURE.md` or create new
-   - Feature design → `/docs/design/`
-   - Development process → `/docs/development/`
-   - Progress log → `/docs/progress/YYYY-MM-DD-topic.md`
-3. **Follow existing patterns**: Match tone and structure of similar docs
-4. **Update index**: Add entry to `/docs/INDEX.md`
 
 ---
 
 ## Documentation Standards
 
-### File Naming
+### File Naming Conventions
 
-**Active Documentation:**
-- Use descriptive names: `AGENT_EVENT_ARCHITECTURE.md` not `agents.md`
-- SCREAMING_SNAKE_CASE for major docs: `API.md`, `ARCHITECTURE.md`
-- Topic prefixes for related docs: `TOOL_REGISTRATION_DESIGN.md`
+**Documentation Files:**
+- Use SCREAMING_SNAKE_CASE for major docs: `ARCHITECTURE.md`, `API.md`
+- Use descriptive names: `RUST_ARCHITECTURE_BEST_PRACTICES.md` not `rust.md`
+- Topic prefixes for related docs: `REFACTORING_CHECKLIST.md`, `REFACTORING_PLAN.md`
 
 **Progress Logs:**
 - Format: `YYYY-MM-DD-topic.md`
-- Example: `2025-11-15-tool-calling-success.md`
-- Be specific: `tool-calling-success` not just `updates`
+- Example: `2025-01-17-architecture-refactoring-session.md`
+- Be specific with topic names
 
-**Archived Docs:**
-- Preserve original names
-- Organize in dated subdirectories: `archive/progress/YYYY-MM/`
+**Fix Documentation:**
+- Format: `YYYY-MM-DD-issue-description.md`
+- Example: `2025-01-14-marketplace-dedup-fix.md`
 
 ### Content Standards
 
-**Every document should have:**
-1. **Title/Header**: Clear document purpose
-2. **Date/Status**: When created, current status
-3. **Audience**: Who should read this
-4. **Purpose**: What problem does this solve
-5. **Content**: Well-organized, scannable
-6. **Examples**: Code samples where relevant
+Every document should include:
 
-**Writing Style:**
-- Clear and concise
-- Active voice
-- Present tense for current state
-- Past tense for completed work
-- Code blocks with syntax highlighting
+```markdown
+---
+title: Document Title
+category: Architecture | Guide | QA | Review
+audience: Developer | PM | QA | All
+reading_time: X minutes
+last_updated: YYYY-MM-DD
+status: Complete | Draft | Deprecated
+---
 
-### Organization Principles
+# Document Title
 
-1. **One authoritative source per topic** - No duplicate content
-2. **Logical categorization** - Related docs grouped together
-3. **Clear hierarchy** - Core docs vs. feature docs vs. historical
-4. **Discoverability** - INDEX.md catalog, descriptive names
-5. **Preservation** - Archive historical docs, don't delete
+## Overview
+Brief description of purpose and scope.
+
+## Content
+Well-organized, scannable content with clear sections.
+
+## Examples
+Code samples where relevant with syntax highlighting.
+```
+
+### Writing Style
+
+- **Clear and concise** - Avoid unnecessary verbosity
+- **Active voice** - "The system processes requests" not "Requests are processed"
+- **Present tense** - For current state ("The API supports...")
+- **Past tense** - For completed work ("We implemented...")
+- **Code blocks** - Always specify language for syntax highlighting
 
 ---
 
 ## Documentation Maintenance
 
-### Monthly Tasks
-1. Archive progress logs older than 1 month to `archive/progress/YYYY-MM/`
-2. Review active docs for accuracy
-3. Check for redundant content
-4. Update INDEX.md with new docs
-5. Verify links in INDEX.md and this file
+### Regular Maintenance
 
-### Quarterly Reviews
-1. Review all active documentation for currency
-2. Identify and combine redundant content
-3. Update architecture docs to reflect current state
-4. Archive superseded design docs
-5. Update this README if structure changed
+**Monthly Tasks:**
+- Review recent documentation for accuracy
+- Update cross-references and links
+- Archive old progress logs (>1 month) if needed
+- Update this README if structure changed
 
-### When Adding Documentation
+**Quarterly Reviews:**
+- Comprehensive documentation review
+- Update architecture docs to reflect current state
+- Consolidate or archive redundant content
+- Review and update best practices
+
+### Adding New Documentation
 
 **Checklist:**
 - [ ] File named clearly and descriptively
+- [ ] Metadata header added (category, audience, etc.)
 - [ ] Content follows documentation standards
-- [ ] Added to appropriate directory
-- [ ] Entry added to INDEX.md
-- [ ] Cross-references updated if needed
-- [ ] README.md updated if major addition
+- [ ] Placed in appropriate directory
+- [ ] Directory README updated
+- [ ] Cross-references updated
+- [ ] This README updated if major addition
+
+### Updating Existing Documentation
+
+**Checklist:**
+- [ ] Update `last_updated` metadata
+- [ ] Verify all links still work
+- [ ] Update related cross-references
+- [ ] Review for accuracy and completeness
+- [ ] Update examples if code changed
 
 ---
 
-## Documentation Versions
+## Contributing Documentation
 
-**Current Structure**: v2.0 (2025-11-15)
-- Reorganized with clear categorization
-- Created INDEX.md catalog
-- Separated active from archived
-- Combined redundant content
+### Creating New Documentation
 
-**Previous Structure**: v1.0 (pre-2025-11-15)
-- Flat structure in docs/
-- Some redundancy
-- Less organized progress logs
+1. **Check existing documentation** - Avoid duplication
+2. **Choose appropriate location:**
+   - Architecture/design → `architecture/`
+   - User guides → `guides/`
+   - Testing/QA → `qa/`
+   - Reviews → `reviews/`
+   - Progress logs → `progress/`
+   - Bug fixes → `fixes/`
+3. **Follow naming conventions** (see above)
+4. **Add metadata header** (see template above)
+5. **Update directory README** (if adding to subdirectory)
+6. **Update this README** (if major addition)
 
-**See [CLEANUP_DECISIONS.md](CLEANUP_DECISIONS.md) for complete reorganization history.**
+### Documentation Templates
+
+**See [MAINTENANCE.md](MAINTENANCE.md)** for comprehensive templates including:
+- Architecture document template
+- Guide template
+- QA document template
+- Progress log template
+- Review template
 
 ---
 
-## Quick Reference Links
+## Related Resources
 
-### Essential Reading
-- [Project README](../README.md)
-- [Development Guide](../DEVELOPMENT.md) (comprehensive)
-- [Complete Documentation Index](INDEX.md)
+### Project Documentation
+- **[Project README](../README.md)** - Project overview
+- **[Development Guide](../DEVELOPMENT.md)** - Comprehensive development workflow
+- **[Agent Configuration](../agents/README.md)** - AI agent setup
+- **[Version Management](../VERSION_MANAGEMENT.md)** - Release procedures
 
-### Technical References
-- [Architecture Specification](ARCHITECTURE.md)
-- [Agent/Event System](AGENT_EVENT_ARCHITECTURE.md)
-- [API Documentation](API.md)
-
-### Configuration
-- [Agent Setup](../agents/README.md)
-- [Version Management](../VERSION_MANAGEMENT.md)
-
-### Recent Work
-- [Latest Progress Logs](progress/)
-- [Refactoring History](development/REFACTORING.md)
-
-### Planning
-- [Development Roadmap](PRD/development-plan.md)
+### External Resources
+- **[Rust Book](https://doc.rust-lang.org/book/)** - Learn Rust
+- **[egui Documentation](https://docs.rs/egui/)** - UI framework
+- **[OpenRouter API](https://openrouter.ai/docs)** - LLM provider
 
 ---
 
 ## Getting Help
 
 ### Documentation Issues
-- Broken link? Update INDEX.md and this file
-- Outdated content? Update the source doc
-- Can't find something? Check INDEX.md catalog
-- Need clarification? Check DEVELOPMENT.md first
+
+- **Broken link?** Check the file was moved, update reference
+- **Outdated content?** Update the source document
+- **Can't find something?** Check directory READMEs for navigation
+- **Missing documentation?** Create it following standards above
 
 ### Development Questions
-- **Setup**: See DEVELOPMENT.md
-- **Architecture**: See ARCHITECTURE.md
-- **API**: See API.md
-- **Agents**: See agents/README.md
-- **Recent Work**: See docs/progress/
+
+- **Setup & workflow:** [Development Guide](../DEVELOPMENT.md)
+- **Architecture & design:** [Architecture](architecture/)
+- **Testing & QA:** [QA Documentation](qa/)
+- **Recent changes:** [Progress Logs](progress/)
+- **Bug fixes:** [Fixes](fixes/)
 
 ---
 
-## About This Documentation System
+## Documentation Metadata
 
-**Purpose**: Provide comprehensive, well-organized, and easily navigable documentation for all aspects of Rustbot.
+**Current Version:** v3.0
+**Last Major Update:** 2025-01-17 (Architecture refactoring organization)
+**Maintained By:** Documentation Agent and contributors
+**Next Review:** 2025-02-17
 
-**Principles**:
-- **Completeness**: Cover all aspects of the project
-- **Organization**: Logical structure, easy to find information
-- **Clarity**: Clear, concise, accurate content
-- **Currency**: Keep documentation up-to-date
-- **Preservation**: Archive historical information, don't delete
+### Version History
 
-**Maintained by**: Documentation Agent and project contributors
-
-**Last major update**: 2025-11-15 (v2.0 reorganization)
-**Next review**: 2025-12-15
+- **v3.0 (2025-01-17)** - Reorganized architecture documentation into logical subdirectories
+- **v2.0 (2025-11-15)** - Created INDEX.md catalog, separated active from archived
+- **v1.0 (pre-2025-11-15)** - Initial flat structure
 
 ---
 
-**Quick tip**: If you're not sure where to start, read [INDEX.md](INDEX.md) for the complete catalog with "I want to..." use cases!
+**Quick Tip:** Each subdirectory has its own README.md with detailed navigation. Start there for section-specific guidance!

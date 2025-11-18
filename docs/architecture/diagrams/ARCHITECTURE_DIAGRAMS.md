@@ -676,10 +676,10 @@ graph LR
 
 ## Related Documentation
 
-- [Refactoring Plan](../RUSTBOT_REFACTORING_PLAN.md) - Detailed implementation plan
-- [Refactoring Checklist](../REFACTORING_CHECKLIST.md) - Task tracking
-- [Phase 1 Summary](../PHASE1_IMPLEMENTATION_SUMMARY.md) - Completed work
-- [Testing Methods](../TESTING_METHODS.md) - Testing strategies
+- [Refactoring Plan](../planning/RUSTBOT_REFACTORING_PLAN.md) - Detailed implementation plan
+- [Refactoring Checklist](../planning/REFACTORING_CHECKLIST.md) - Task tracking
+- [Phase 1 Summary](../implementation/PHASE1_IMPLEMENTATION_SUMMARY.md) - Completed work
+- [Testing Methods](../../qa/TESTING_METHODS.md) - Testing strategies
 - [Refactoring Timeline](./REFACTORING_TIMELINE.md) - Gantt chart
 - [Data Flow Diagrams](./DATA_FLOW.md) - Message flow analysis
 

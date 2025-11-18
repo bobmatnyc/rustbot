@@ -1,6 +1,15 @@
+---
+title: Refactoring Quick Start
+category: Guide
+audience: Developer
+reading_time: 10 minutes
+last_updated: 2025-01-17
+status: Complete
+---
+
 # Quick Start: Refactoring with Dependency Injection
 
-**5-Minute Overview** | [Full Guide](docs/PROTOTYPE_REFACTORING.md) | [Test Results](docs/PROTOTYPE_TEST_RESULTS.md) | [Summary](REFACTORING_PROTOTYPE_SUMMARY.md)
+**5-Minute Overview** | [Full Guide](../architecture/implementation/PROTOTYPE_REFACTORING.md) | [Test Results](../architecture/implementation/PROTOTYPE_TEST_RESULTS.md) | [Summary](../architecture/implementation/REFACTORING_PROTOTYPE_SUMMARY.md)
 
 ---
 
@@ -191,18 +200,18 @@ async fn test_feature() {
 
 ## 📖 Read More
 
-- **Full Migration Guide**: [docs/PROTOTYPE_REFACTORING.md](docs/PROTOTYPE_REFACTORING.md)
+- **Full Migration Guide**: [docs/PROTOTYPE_REFACTORING.md](../architecture/implementation/PROTOTYPE_REFACTORING.md)
   - Step-by-step instructions
   - Before/after comparisons
   - Common pitfalls
   - Performance analysis
 
-- **Test Results**: [docs/PROTOTYPE_TEST_RESULTS.md](docs/PROTOTYPE_TEST_RESULTS.md)
+- **Test Results**: [docs/PROTOTYPE_TEST_RESULTS.md](../architecture/implementation/PROTOTYPE_TEST_RESULTS.md)
   - Compilation results
   - Test coverage analysis
   - Performance benchmarks
 
-- **Executive Summary**: [REFACTORING_PROTOTYPE_SUMMARY.md](REFACTORING_PROTOTYPE_SUMMARY.md)
+- **Executive Summary**: [REFACTORING_PROTOTYPE_SUMMARY.md](../architecture/implementation/REFACTORING_PROTOTYPE_SUMMARY.md)
   - Complete deliverables
   - Key metrics
   - Success criteria
@@ -276,6 +285,6 @@ Quick validation that you understand the pattern:
 **Quick Start Complete!**
 
 For detailed information, see:
-- [Full Guide](docs/PROTOTYPE_REFACTORING.md)
-- [Test Results](docs/PROTOTYPE_TEST_RESULTS.md)
-- [Summary](REFACTORING_PROTOTYPE_SUMMARY.md)
+- [Full Guide](../architecture/implementation/PROTOTYPE_REFACTORING.md)
+- [Test Results](../architecture/implementation/PROTOTYPE_TEST_RESULTS.md)
+- [Summary](../architecture/implementation/REFACTORING_PROTOTYPE_SUMMARY.md)

@@ -12,17 +12,17 @@
 
 | File | Size | Diagrams | Lines | Purpose |
 |------|------|----------|-------|---------|
-| **docs/diagrams/ARCHITECTURE_DIAGRAMS.md** | 19K | 10 | 856 | Visual architecture documentation |
-| **docs/diagrams/REFACTORING_TIMELINE.md** | 12K | 7 | 679 | Project timeline and progress |
-| **docs/diagrams/DATA_FLOW.md** | 16K | 15 | 675 | Message flow analysis |
-| **docs/diagrams/README.md** | 8K | 0 | 301 | Directory index and guide |
+| **docs/architecture/diagrams/ARCHITECTURE_DIAGRAMS.md** | 19K | 10 | 856 | Visual architecture documentation |
+| **docs/architecture/diagrams/REFACTORING_TIMELINE.md** | 12K | 7 | 679 | Project timeline and progress |
+| **docs/architecture/diagrams/DATA_FLOW.md** | 16K | 15 | 675 | Message flow analysis |
+| **docs/architecture/diagrams/README.md** | 8K | 0 | 301 | Directory index and guide |
 | **Total** | **55K** | **32** | **2,511** | Complete visualization suite |
 
 ---
 
 ## 🎯 What Was Created
 
-### 1. Architecture Diagrams (docs/diagrams/ARCHITECTURE_DIAGRAMS.md)
+### 1. Architecture Diagrams (docs/architecture/diagrams/ARCHITECTURE_DIAGRAMS.md)
 
 **10 Mermaid diagrams showing**:
 
@@ -70,7 +70,7 @@
 
 ---
 
-### 2. Refactoring Timeline (docs/diagrams/REFACTORING_TIMELINE.md)
+### 2. Refactoring Timeline (docs/architecture/diagrams/REFACTORING_TIMELINE.md)
 
 **7 Mermaid diagrams showing**:
 
@@ -118,7 +118,7 @@
 
 ---
 
-### 3. Data Flow Diagrams (docs/diagrams/DATA_FLOW.md)
+### 3. Data Flow Diagrams (docs/architecture/diagrams/DATA_FLOW.md)
 
 **15 Mermaid diagrams showing**:
 
@@ -167,7 +167,7 @@
 
 ---
 
-### 4. Directory README (docs/diagrams/README.md)
+### 4. Directory README (docs/architecture/diagrams/README.md)
 
 **Comprehensive guide including**:
 - File descriptions and use cases
@@ -382,10 +382,10 @@ All 32 diagrams have been verified to render correctly in:
 
 ## 📝 File Locations
 
-All files created in `/docs/diagrams/`:
+All files created in `/docs/architecture/diagrams/`:
 
 ```
-docs/diagrams/
+docs/architecture/diagrams/
 ├── README.md                    (Directory index)
 ├── ARCHITECTURE_DIAGRAMS.md     (10 diagrams)
 ├── REFACTORING_TIMELINE.md      (7 diagrams)

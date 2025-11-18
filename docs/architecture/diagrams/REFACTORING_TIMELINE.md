@@ -442,9 +442,9 @@ graph LR
 
 - [Architecture Diagrams](./ARCHITECTURE_DIAGRAMS.md) - Visual architecture
 - [Data Flow Diagrams](./DATA_FLOW.md) - Message flow analysis
-- [Refactoring Plan](../RUSTBOT_REFACTORING_PLAN.md) - Detailed plan
-- [Refactoring Checklist](../REFACTORING_CHECKLIST.md) - Task tracking
-- [Phase 1 Summary](../PHASE1_IMPLEMENTATION_SUMMARY.md) - Completed work
+- [Refactoring Plan](../planning/RUSTBOT_REFACTORING_PLAN.md) - Detailed plan
+- [Refactoring Checklist](../planning/REFACTORING_CHECKLIST.md) - Task tracking
+- [Phase 1 Summary](../implementation/PHASE1_IMPLEMENTATION_SUMMARY.md) - Completed work
 
 ---
 

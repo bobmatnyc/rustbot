@@ -1,3 +1,12 @@
+---
+title: Rustbot Refactoring Plan
+category: Architecture
+audience: Developer, PM, Architect
+reading_time: 35 minutes
+last_updated: 2025-01-17
+status: Complete
+---
+
 # Rustbot Refactoring Plan
 
 ## Executive Summary
@@ -829,8 +838,8 @@ async fn main() -> Result<()> {
 
 ## 11. References
 
-- [Rust Architecture Best Practices](./RUST_ARCHITECTURE_BEST_PRACTICES.md)
-- [Testing Methods Documentation](./TESTING_METHODS.md)
+- [Rust Architecture Best Practices](../architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md)
+- [Testing Methods Documentation](../qa/TESTING_METHODS.md)
 - [Rust Design Patterns Book](https://rust-unofficial.github.io/patterns/)
 
 ---

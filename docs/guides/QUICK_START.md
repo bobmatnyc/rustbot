@@ -1,3 +1,12 @@
+---
+title: Rustbot Quick Start
+category: Guide
+audience: All
+reading_time: 8 minutes
+last_updated: 2025-01-17
+status: Complete
+---
+
 # Rustbot Architecture Refactoring - Quick Start Guide
 
 **⏱️ Reading Time**: 5 minutes
@@ -135,51 +144,51 @@ fn test_app() {
    - **Time**: 10 minutes
    - **Takeaway**: Understand documentation structure
 
-2. **[ARCHITECTURE_RESEARCH_SUMMARY.md](./ARCHITECTURE_RESEARCH_SUMMARY.md)** - Executive summary
+2. **[ARCHITECTURE_RESEARCH_SUMMARY.md](architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md)** - Executive summary
    - **When**: Need high-level overview
    - **Time**: 15 minutes
    - **Takeaway**: Key findings and decisions (ADRs)
 
-3. **[RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md)** - Detailed refactoring plan
+3. **[RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md)** - Detailed refactoring plan
    - **When**: Ready to implement
    - **Time**: 45 minutes
    - **Takeaway**: Concrete examples and migration strategy
 
-4. **[REFACTORING_CHECKLIST.md](./REFACTORING_CHECKLIST.md)** - Task list
+4. **[REFACTORING_CHECKLIST.md](architecture/planning/REFACTORING_CHECKLIST.md)** - Task list
    - **When**: Actively coding
    - **Time**: Reference as needed
    - **Takeaway**: Step-by-step tasks and validation
 
 ### Deep Dive Documents (As Needed)
 
-5. **[RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md)** - Comprehensive guide
+5. **[RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md)** - Comprehensive guide
    - **When**: Learning Rust architecture patterns
    - **Time**: 2-3 hours (800 lines)
    - **Takeaway**: DI patterns, testing, anti-patterns
 
-6. **[diagrams/ARCHITECTURE_DIAGRAMS.md](./diagrams/ARCHITECTURE_DIAGRAMS.md)** - Visual architecture
+6. **[diagrams/ARCHITECTURE_DIAGRAMS.md](architecture/diagrams/ARCHITECTURE_DIAGRAMS.md)** - Visual architecture
    - **When**: Need visual understanding
    - **Time**: 30 minutes
    - **Takeaway**: 10 Mermaid diagrams of architecture
 
-7. **[diagrams/REFACTORING_TIMELINE.md](./diagrams/REFACTORING_TIMELINE.md)** - Project timeline
+7. **[diagrams/REFACTORING_TIMELINE.md](architecture/diagrams/REFACTORING_TIMELINE.md)** - Project timeline
    - **When**: Project management, progress tracking
    - **Time**: 20 minutes
    - **Takeaway**: Gantt chart, milestones, progress
 
-8. **[diagrams/DATA_FLOW.md](./diagrams/DATA_FLOW.md)** - Message flow analysis
+8. **[diagrams/DATA_FLOW.md](architecture/diagrams/DATA_FLOW.md)** - Message flow analysis
    - **When**: Understanding concurrency and data flow
    - **Time**: 40 minutes
    - **Takeaway**: Before/after message flow, performance
 
-9. **[PHASE1_IMPLEMENTATION_SUMMARY.md](./PHASE1_IMPLEMENTATION_SUMMARY.md)** - Phase 1 results
+9. **[PHASE1_IMPLEMENTATION_SUMMARY.md](architecture/implementation/PHASE1_IMPLEMENTATION_SUMMARY.md)** - Phase 1 results
    - **When**: Reviewing completed work
    - **Time**: 15 minutes
    - **Takeaway**: What was built, test results, issues
 
 ### Quick References
 
-- **[diagrams/README.md](./diagrams/README.md)** - Diagram directory index
+- **[diagrams/README.md](architecture/diagrams/README.md)** - Diagram directory index
 - **API.md** - Rustbot API documentation
 - **TESTING_METHODS.md** - Testing strategies
 
@@ -191,8 +200,8 @@ fn test_app() {
 
 **Read This (30 minutes)**:
 1. This guide (you're here!) → 5 min
-2. [RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md) §1-3 → 15 min
-3. [REFACTORING_CHECKLIST.md](./REFACTORING_CHECKLIST.md) (skim) → 10 min
+2. [RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md) §1-3 → 15 min
+3. [REFACTORING_CHECKLIST.md](architecture/planning/REFACTORING_CHECKLIST.md) (skim) → 10 min
 
 **Then Do This**:
 1. Find your phase in checklist (Phase 1 complete, start Phase 2)
@@ -210,8 +219,8 @@ fn test_app() {
 
 **Read This (20 minutes)**:
 1. This guide (you're here!) → 5 min
-2. [diagrams/REFACTORING_TIMELINE.md](./diagrams/REFACTORING_TIMELINE.md) → 10 min
-3. [ARCHITECTURE_RESEARCH_SUMMARY.md](./ARCHITECTURE_RESEARCH_SUMMARY.md) → 5 min
+2. [diagrams/REFACTORING_TIMELINE.md](architecture/diagrams/REFACTORING_TIMELINE.md) → 10 min
+3. [ARCHITECTURE_RESEARCH_SUMMARY.md](architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md) → 5 min
 
 **Key Metrics**:
 - **Progress**: 25% complete (Phase 1 done)
@@ -232,8 +241,8 @@ fn test_app() {
 
 **Read This (45 minutes)**:
 1. This guide (you're here!) → 5 min
-2. [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md) §1-3 → 25 min
-3. [diagrams/ARCHITECTURE_DIAGRAMS.md](./diagrams/ARCHITECTURE_DIAGRAMS.md) → 15 min
+2. [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) §1-3 → 25 min
+3. [diagrams/ARCHITECTURE_DIAGRAMS.md](architecture/diagrams/ARCHITECTURE_DIAGRAMS.md) → 15 min
 
 **Key Review Points**:
 - Dependency injection: Constructor injection with `Arc<dyn Trait>`
@@ -253,8 +262,8 @@ fn test_app() {
 
 **Read This (3 hours)**:
 1. This guide (you're here!) → 5 min
-2. [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md) → 2.5 hours
-3. [RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md) §4 (examples) → 25 min
+2. [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) → 2.5 hours
+3. [RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md) §4 (examples) → 25 min
 
 **Focus Areas**:
 - Trait-based dependency injection (§1)
@@ -403,7 +412,7 @@ cargo doc --open
 ### Common Questions
 
 **Q: Where do I start coding?**
-A: Check [REFACTORING_CHECKLIST.md](./REFACTORING_CHECKLIST.md) for your current phase tasks.
+A: Check [REFACTORING_CHECKLIST.md](architecture/planning/REFACTORING_CHECKLIST.md) for your current phase tasks.
 
 **Q: How do I test without filesystem?**
 A: Use `MockFileSystem`. See example in RUSTBOT_REFACTORING_PLAN.md §4.1.
@@ -435,17 +444,17 @@ A: Follow Phase 1 pattern: (1) Define trait, (2) Implement real version, (3) Add
 
 ## 📖 Full Documentation Index
 
-1. **[QUICK_START.md](./QUICK_START.md)** ← You are here
+1. **[QUICK_START.md](guides/QUICK_START.md)** ← You are here
 2. **[ARCHITECTURE_INDEX.md](./ARCHITECTURE_INDEX.md)** - Central navigation
-3. **[RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md)** - Patterns guide
-4. **[RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md)** - Detailed plan
-5. **[ARCHITECTURE_RESEARCH_SUMMARY.md](./ARCHITECTURE_RESEARCH_SUMMARY.md)** - Executive summary
-6. **[REFACTORING_CHECKLIST.md](./REFACTORING_CHECKLIST.md)** - Task list
-7. **[PHASE1_IMPLEMENTATION_SUMMARY.md](./PHASE1_IMPLEMENTATION_SUMMARY.md)** - Phase 1 results
-8. **[diagrams/ARCHITECTURE_DIAGRAMS.md](./diagrams/ARCHITECTURE_DIAGRAMS.md)** - Visual architecture
-9. **[diagrams/REFACTORING_TIMELINE.md](./diagrams/REFACTORING_TIMELINE.md)** - Timeline
-10. **[diagrams/DATA_FLOW.md](./diagrams/DATA_FLOW.md)** - Message flow
-11. **[diagrams/README.md](./diagrams/README.md)** - Diagram index
+3. **[RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md)** - Patterns guide
+4. **[RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md)** - Detailed plan
+5. **[ARCHITECTURE_RESEARCH_SUMMARY.md](architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md)** - Executive summary
+6. **[REFACTORING_CHECKLIST.md](architecture/planning/REFACTORING_CHECKLIST.md)** - Task list
+7. **[PHASE1_IMPLEMENTATION_SUMMARY.md](architecture/implementation/PHASE1_IMPLEMENTATION_SUMMARY.md)** - Phase 1 results
+8. **[diagrams/ARCHITECTURE_DIAGRAMS.md](architecture/diagrams/ARCHITECTURE_DIAGRAMS.md)** - Visual architecture
+9. **[diagrams/REFACTORING_TIMELINE.md](architecture/diagrams/REFACTORING_TIMELINE.md)** - Timeline
+10. **[diagrams/DATA_FLOW.md](architecture/diagrams/DATA_FLOW.md)** - Message flow
+11. **[diagrams/README.md](architecture/diagrams/README.md)** - Diagram index
 
 ---
 
@@ -453,9 +462,9 @@ A: Follow Phase 1 pattern: (1) Define trait, (2) Implement real version, (3) Add
 
 **Choose your path**:
 
-- 🏃 **I'm ready to code** → [REFACTORING_CHECKLIST.md](./REFACTORING_CHECKLIST.md)
-- 📚 **I need more context** → [RUSTBOT_REFACTORING_PLAN.md](./RUSTBOT_REFACTORING_PLAN.md)
-- 🎓 **I want to learn patterns** → [RUST_ARCHITECTURE_BEST_PRACTICES.md](./RUST_ARCHITECTURE_BEST_PRACTICES.md)
+- 🏃 **I'm ready to code** → [REFACTORING_CHECKLIST.md](architecture/planning/REFACTORING_CHECKLIST.md)
+- 📚 **I need more context** → [RUSTBOT_REFACTORING_PLAN.md](architecture/planning/RUSTBOT_REFACTORING_PLAN.md)
+- 🎓 **I want to learn patterns** → [RUST_ARCHITECTURE_BEST_PRACTICES.md](architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md)
 - 🗺️ **I want full overview** → [ARCHITECTURE_INDEX.md](./ARCHITECTURE_INDEX.md)
 
 **Good luck! 🚀**

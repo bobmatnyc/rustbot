@@ -1,3 +1,12 @@
+---
+title: Prototype Refactoring Guide
+category: Architecture
+audience: Developer
+reading_time: 30 minutes
+last_updated: 2025-01-17
+status: Complete
+---
+
 # Prototype Refactoring Guide: Token Stats Management
 
 **Status**: Phase 2 Complete - Working Prototype

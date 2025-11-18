@@ -1,3 +1,12 @@
+---
+title: Architecture Research Summary
+category: Architecture
+audience: Architect, Developer
+reading_time: 20 minutes
+last_updated: 2025-01-17
+status: Complete
+---
+
 # Rust Architecture Research Summary
 
 **Date**: January 17, 2025

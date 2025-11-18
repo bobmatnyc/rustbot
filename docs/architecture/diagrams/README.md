@@ -159,19 +159,19 @@ All diagrams use **Mermaid** syntax for rendering:
 
 ### Core Refactoring Docs
 
-- [../RUSTBOT_REFACTORING_PLAN.md](../RUSTBOT_REFACTORING_PLAN.md) - Detailed implementation plan
-- [../REFACTORING_CHECKLIST.md](../REFACTORING_CHECKLIST.md) - Task checklist
-- [../PHASE1_IMPLEMENTATION_SUMMARY.md](../PHASE1_IMPLEMENTATION_SUMMARY.md) - Phase 1 results
+- [../RUSTBOT_REFACTORING_PLAN.md](../planning/RUSTBOT_REFACTORING_PLAN.md) - Detailed implementation plan
+- [../REFACTORING_CHECKLIST.md](../planning/REFACTORING_CHECKLIST.md) - Task checklist
+- [../PHASE1_IMPLEMENTATION_SUMMARY.md](../implementation/PHASE1_IMPLEMENTATION_SUMMARY.md) - Phase 1 results
 
 ### Architecture Context
 
 - [../ARCHITECTURE.md](../ARCHITECTURE.md) - Overall architecture
-- [../RUST_ARCHITECTURE_BEST_PRACTICES.md](../RUST_ARCHITECTURE_BEST_PRACTICES.md) - Best practices
-- [../ARCHITECTURE_RESEARCH_SUMMARY.md](../ARCHITECTURE_RESEARCH_SUMMARY.md) - Research findings
+- [../RUST_ARCHITECTURE_BEST_PRACTICES.md](../best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md) - Best practices
+- [../ARCHITECTURE_RESEARCH_SUMMARY.md](../planning/ARCHITECTURE_RESEARCH_SUMMARY.md) - Research findings
 
 ### Testing
 
-- [../TESTING_METHODS.md](../TESTING_METHODS.md) - Testing strategies
+- [../TESTING_METHODS.md](../../qa/TESTING_METHODS.md) - Testing strategies
 - [../development/REFACTORING.md](../development/REFACTORING.md) - Developer guide
 
 ---
@@ -217,7 +217,7 @@ All diagrams can be:
 
 Reference specific diagrams in PR comments:
 ```markdown
-See [Architecture Diagrams - Section 5](../docs/diagrams/ARCHITECTURE_DIAGRAMS.md#5-dependency-injection-flow) for how this implements DI.
+See [Architecture Diagrams - Section 5](../do../ARCHITECTURE_DIAGRAMS.md#5-dependency-injection-flow) for how this implements DI.
 ```
 
 ### In Documentation

@@ -1,3 +1,12 @@
+---
+title: Rust Architecture Best Practices
+category: Architecture
+audience: Developer, Architect
+reading_time: 45 minutes
+last_updated: 2025-01-17
+status: Complete
+---
+
 # Rust Architecture Best Practices
 
 ## Research Summary (January 2025)

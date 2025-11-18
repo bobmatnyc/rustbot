@@ -491,9 +491,9 @@ None (research only, no code changes).
 
 | File | Size | Purpose |
 |------|------|---------|
-| `docs/RUST_ARCHITECTURE_BEST_PRACTICES.md` | ~800 lines | Comprehensive Rust architecture guide |
-| `docs/RUSTBOT_REFACTORING_PLAN.md` | ~600 lines | Concrete refactoring plan for Rustbot |
-| `docs/ARCHITECTURE_RESEARCH_SUMMARY.md` | ~400 lines | Executive summary and quick reference |
+| `docs/architecture/best-practices/RUST_ARCHITECTURE_BEST_PRACTICES.md` | ~800 lines | Comprehensive Rust architecture guide |
+| `docs/architecture/planning/RUSTBOT_REFACTORING_PLAN.md` | ~600 lines | Concrete refactoring plan for Rustbot |
+| `docs/architecture/planning/ARCHITECTURE_RESEARCH_SUMMARY.md` | ~400 lines | Executive summary and quick reference |
 | `docs/progress/2025-01-17-architecture-research.md` | This file | Session progress log |
 
 **Total Documentation**: ~2000 lines of comprehensive guidance.

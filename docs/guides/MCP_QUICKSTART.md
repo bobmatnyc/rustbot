@@ -1,3 +1,12 @@
+---
+title: MCP Quick Start Guide
+category: Guide
+audience: Developer
+reading_time: 8 minutes
+last_updated: 2025-01-17
+status: Complete
+---
+
 # MCP Plugin System - Quick Start Guide
 
 **For Rustbot Developers**
