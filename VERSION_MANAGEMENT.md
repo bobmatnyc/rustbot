@@ -19,34 +19,72 @@ Example: `v0.0.1-0001`
 
 ## Updating Versions
 
-### 1. Update Build Number (Most Common)
+### Automated Method (Recommended)
+
+Use the version management script or Makefile:
+
+```bash
+# Show current version
+make version-show
+# or
+./scripts/manage_version.py show
+
+# Bump patch version (0.2.6 -> 0.2.7)
+make version-patch
+# or
+./scripts/manage_version.py bump patch
+
+# Bump minor version (0.2.6 -> 0.3.0)
+make version-minor
+
+# Bump major version (0.2.6 -> 1.0.0)
+make version-major
+
+# Bump build number only (0001 -> 0002)
+make version-build
+
+# Full release workflow (bump + commit + push)
+make release-patch   # Most common
+make release-minor   # For new features
+make release-major   # For breaking changes
+```
+
+The script automatically updates:
+- `src/version.rs` - VERSION and BUILD constants
+- `Cargo.toml` - package version
+- `VERSION_MANAGEMENT.md` - Current Version section
+
+### Manual Method (Not Recommended)
+
+Only use if automation fails:
+
+#### 1. Update Build Number
 
 For routine builds and minor changes:
 
 1. Edit `src/version.rs`
 2. Increment the `BUILD` constant: `"0001"` → `"0002"`
-3. Build and test
-4. Commit with message: `build: Bump build to 0002`
+3. Update `VERSION_MANAGEMENT.md`
+4. Build and test
+5. Commit with message: `build: Bump build to 0002`
 
-### 2. Update Patch Version
+#### 2. Update Patch Version
 
 For bug fixes and small improvements:
 
-1. Edit `src/version.rs`
-2. Increment `VERSION`: `"0.0.1"` → `"0.0.2"`
-3. Reset `BUILD` to `"0001"`
-4. Update `Cargo.toml` version to match
-5. Commit with message: `chore: Release v0.0.2`
+1. Edit `src/version.rs` - Increment `VERSION`: `"0.2.6"` → `"0.2.7"`, reset `BUILD` to `"0001"`
+2. Update `Cargo.toml` version to match
+3. Update `VERSION_MANAGEMENT.md`
+4. Commit with message: `chore: Release v0.2.7`
 
-### 3. Update Minor Version
+#### 3. Update Minor Version
 
 For new features (backward compatible):
 
-1. Edit `src/version.rs`
-2. Increment minor: `"0.0.1"` → `"0.1.0"`
-3. Reset `BUILD` to `"0001"`
-4. Update `Cargo.toml` version to match
-5. Commit with message: `feat: Release v0.1.0`
+1. Edit `src/version.rs` - Increment minor: `"0.2.6"` → `"0.3.0"`, reset `BUILD` to `"0001"`
+2. Update `Cargo.toml` version to match
+3. Update `VERSION_MANAGEMENT.md`
+4. Commit with message: `feat: Release v0.3.0`
 
 ### 4. Update Major Version
 
