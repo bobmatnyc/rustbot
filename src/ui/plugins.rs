@@ -26,12 +26,12 @@ use eframe::egui;
 use egui_phosphor::regular as icons;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::runtime::Handle;
+use tokio::sync::Mutex;
 
+use crate::events::{Event, EventBus, EventKind, McpPluginEvent, PluginHealthStatus};
 use crate::mcp::manager::McpPluginManager;
 use crate::mcp::plugin::{PluginMetadata, PluginState};
-use crate::events::{Event, EventBus, EventKind, McpPluginEvent, PluginHealthStatus};
 
 /// Extensions (local) management view
 ///
@@ -117,7 +117,8 @@ impl PluginsView {
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // Reload config button
-                if ui.button(format!("{} Reload Config", icons::ARROW_CLOCKWISE))
+                if ui
+                    .button(format!("{} Reload Config", icons::ARROW_CLOCKWISE))
                     .on_hover_text("Reload plugin configuration from disk")
                     .clicked()
                 {
@@ -125,7 +126,8 @@ impl PluginsView {
                 }
 
                 // Manual refresh button
-                if ui.button(format!("{} Refresh", icons::ARROWS_CLOCKWISE))
+                if ui
+                    .button(format!("{} Refresh", icons::ARROWS_CLOCKWISE))
                     .on_hover_text("Refresh plugin list now")
                     .clicked()
                 {
@@ -177,12 +179,12 @@ impl PluginsView {
                 ui.label(
                     egui::RichText::new("No plugins configured")
                         .size(12.0)
-                        .color(egui::Color32::from_rgb(120, 120, 120))
+                        .color(egui::Color32::from_rgb(120, 120, 120)),
                 );
                 ui.label(
                     egui::RichText::new("Create mcp_config.json to add plugins")
                         .size(11.0)
-                        .color(egui::Color32::from_rgb(150, 150, 150))
+                        .color(egui::Color32::from_rgb(150, 150, 150)),
                 );
             });
             return;
@@ -202,11 +204,7 @@ impl PluginsView {
                     ui.colored_label(color, status_icon);
 
                     // Plugin name
-                    ui.label(
-                        egui::RichText::new(&plugin.name)
-                            .strong()
-                            .size(14.0)
-                    );
+                    ui.label(egui::RichText::new(&plugin.name).strong().size(14.0));
 
                     // Tool count badge
                     if !plugin.tools.is_empty() {
@@ -214,7 +212,7 @@ impl PluginsView {
                             ui.label(
                                 egui::RichText::new(format!("{} tools", plugin.tools.len()))
                                     .size(11.0)
-                                    .color(egui::Color32::from_rgb(100, 100, 100))
+                                    .color(egui::Color32::from_rgb(100, 100, 100)),
                             );
                         });
                     }
@@ -227,7 +225,7 @@ impl PluginsView {
                     ui.label(
                         egui::RichText::new(state_text)
                             .size(11.0)
-                            .color(egui::Color32::from_rgb(120, 120, 120))
+                            .color(egui::Color32::from_rgb(120, 120, 120)),
                     );
                 });
             });
@@ -243,7 +241,7 @@ impl PluginsView {
                     response.response.rect,
                     egui::Rounding::same(2),
                     egui::Stroke::new(2.0, egui::Color32::from_rgb(60, 120, 220)),
-                    egui::epaint::StrokeKind::Outside
+                    egui::epaint::StrokeKind::Outside,
                 );
             }
 
@@ -267,7 +265,7 @@ impl PluginsView {
                 ui.label(
                     egui::RichText::new(format!("ID: {}", plugin.id))
                         .size(11.0)
-                        .color(egui::Color32::from_rgb(120, 120, 120))
+                        .color(egui::Color32::from_rgb(120, 120, 120)),
                 );
 
                 ui.add_space(5.0);
@@ -277,7 +275,7 @@ impl PluginsView {
                     ui.label(
                         egui::RichText::new(desc)
                             .size(12.0)
-                            .color(egui::Color32::from_rgb(80, 80, 80))
+                            .color(egui::Color32::from_rgb(80, 80, 80)),
                     );
                     ui.add_space(5.0);
                 }
@@ -300,12 +298,12 @@ impl PluginsView {
                         ui.set_min_width(ui.available_width());
                         ui.colored_label(
                             egui::Color32::from_rgb(200, 60, 60),
-                            format!("{} Error:", icons::WARNING)
+                            format!("{} Error:", icons::WARNING),
                         );
                         ui.label(
                             egui::RichText::new(error_msg)
                                 .size(11.0)
-                                .color(egui::Color32::from_rgb(150, 50, 50))
+                                .color(egui::Color32::from_rgb(150, 50, 50)),
                         );
                     });
                 }
@@ -321,7 +319,7 @@ impl PluginsView {
                             plugin.max_retries
                         ))
                         .size(11.0)
-                        .color(egui::Color32::from_rgb(200, 150, 50))
+                        .color(egui::Color32::from_rgb(200, 150, 50)),
                     );
                 }
 
@@ -330,8 +328,12 @@ impl PluginsView {
 
                 // Tools section
                 ui.label(
-                    egui::RichText::new(format!("{} Tools ({})", icons::WRENCH, plugin.tools.len()))
-                        .strong()
+                    egui::RichText::new(format!(
+                        "{} Tools ({})",
+                        icons::WRENCH,
+                        plugin.tools.len()
+                    ))
+                    .strong(),
                 );
                 ui.add_space(5.0);
 
@@ -339,7 +341,7 @@ impl PluginsView {
                     ui.label(
                         egui::RichText::new("No tools available")
                             .size(11.0)
-                            .color(egui::Color32::from_rgb(120, 120, 120))
+                            .color(egui::Color32::from_rgb(120, 120, 120)),
                     );
                 } else {
                     egui::ScrollArea::vertical()
@@ -357,7 +359,7 @@ impl PluginsView {
                                         ui.label(
                                             egui::RichText::new(desc)
                                                 .size(11.0)
-                                                .color(egui::Color32::from_rgb(100, 100, 100))
+                                                .color(egui::Color32::from_rgb(100, 100, 100)),
                                         );
                                     });
                                 }
@@ -370,48 +372,48 @@ impl PluginsView {
                 ui.separator();
 
                 // Control buttons
-                ui.horizontal(|ui| {
-                    match &plugin.state {
-                        PluginState::Running => {
-                            if ui.button(format!("{} Stop", icons::STOP))
-                                .on_hover_text("Stop this plugin")
-                                .clicked()
-                            {
-                                self.stop_plugin(plugin_id, ctx);
-                            }
+                ui.horizontal(|ui| match &plugin.state {
+                    PluginState::Running => {
+                        if ui
+                            .button(format!("{} Stop", icons::STOP))
+                            .on_hover_text("Stop this plugin")
+                            .clicked()
+                        {
+                            self.stop_plugin(plugin_id, ctx);
+                        }
 
-                            if ui.button(format!("{} Restart", icons::ARROW_CLOCKWISE))
-                                .on_hover_text("Restart this plugin")
-                                .clicked()
-                            {
-                                self.restart_plugin(plugin_id, ctx);
-                            }
-                        }
-                        PluginState::Stopped | PluginState::Disabled | PluginState::Error { .. } => {
-                            if ui.button(format!("{} Start", icons::PLAY))
-                                .on_hover_text("Start this plugin")
-                                .clicked()
-                            {
-                                self.start_plugin(plugin_id, ctx);
-                            }
-                        }
-                        PluginState::Starting | PluginState::Initializing | PluginState::Stopping => {
-                            ui.label(
-                                egui::RichText::new("Operation in progress...")
-                                    .size(11.0)
-                                    .color(egui::Color32::from_rgb(150, 150, 150))
-                            );
+                        if ui
+                            .button(format!("{} Restart", icons::ARROW_CLOCKWISE))
+                            .on_hover_text("Restart this plugin")
+                            .clicked()
+                        {
+                            self.restart_plugin(plugin_id, ctx);
                         }
                     }
+                    PluginState::Stopped | PluginState::Disabled | PluginState::Error { .. } => {
+                        if ui
+                            .button(format!("{} Start", icons::PLAY))
+                            .on_hover_text("Start this plugin")
+                            .clicked()
+                        {
+                            self.start_plugin(plugin_id, ctx);
+                        }
+                    }
+                    PluginState::Starting | PluginState::Initializing | PluginState::Stopping => {
+                        ui.label(
+                            egui::RichText::new("Operation in progress...")
+                                .size(11.0)
+                                .color(egui::Color32::from_rgb(150, 150, 150)),
+                        );
+                    }
                 });
-
             } else {
                 // Selected plugin not found (might have been removed)
                 ui.vertical_centered(|ui| {
                     ui.add_space(50.0);
                     ui.label(
                         egui::RichText::new("Plugin not found")
-                            .color(egui::Color32::from_rgb(150, 150, 150))
+                            .color(egui::Color32::from_rgb(150, 150, 150)),
                     );
                 });
                 self.selected_plugin = None; // Clear invalid selection
@@ -422,7 +424,7 @@ impl PluginsView {
                 ui.add_space(50.0);
                 ui.label(
                     egui::RichText::new("← Select a plugin to view details")
-                        .color(egui::Color32::from_rgb(120, 120, 120))
+                        .color(egui::Color32::from_rgb(120, 120, 120)),
                 );
             });
         }
@@ -444,7 +446,7 @@ impl PluginsView {
             ui.label(
                 egui::RichText::new("No recent events")
                     .size(11.0)
-                    .color(egui::Color32::from_rgb(120, 120, 120))
+                    .color(egui::Color32::from_rgb(120, 120, 120)),
             );
         } else {
             egui::ScrollArea::vertical()
@@ -457,7 +459,7 @@ impl PluginsView {
                             ui.label(
                                 egui::RichText::new(event)
                                     .size(11.0)
-                                    .color(egui::Color32::from_rgb(80, 80, 80))
+                                    .color(egui::Color32::from_rgb(80, 80, 80)),
                             );
                         });
                     }
@@ -470,7 +472,8 @@ impl PluginsView {
     /// Events are stored in a circular buffer (last 50 events).
     pub fn add_event(&mut self, event_text: String) {
         let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
-        self.recent_events.push_back(format!("[{}] {}", timestamp, event_text));
+        self.recent_events
+            .push_back(format!("[{}] {}", timestamp, event_text));
 
         // Keep only last 50 events
         if self.recent_events.len() > 50 {
@@ -596,7 +599,7 @@ fn get_status_icon_and_color(state: &PluginState) -> (&'static str, egui::Color3
             ("◐", egui::Color32::from_rgb(200, 180, 50)) // Yellow
         }
         PluginState::Stopping => ("◐", egui::Color32::from_rgb(200, 150, 100)), // Orange
-        PluginState::Stopped => ("○", egui::Color32::from_rgb(120, 120, 120)), // Gray
+        PluginState::Stopped => ("○", egui::Color32::from_rgb(120, 120, 120)),  // Gray
         PluginState::Disabled => ("○", egui::Color32::from_rgb(150, 150, 150)), // Light gray
         PluginState::Error { .. } => ("✖", egui::Color32::from_rgb(200, 60, 60)), // Red
     }
@@ -618,7 +621,10 @@ fn get_state_text(state: &PluginState) -> &'static str {
 /// Format MCP plugin event as human-readable text
 fn format_plugin_event(event: &McpPluginEvent) -> String {
     match event {
-        McpPluginEvent::Started { plugin_id, tool_count } => {
+        McpPluginEvent::Started {
+            plugin_id,
+            tool_count,
+        } => {
             format!("✓ {} started ({} tools)", plugin_id, tool_count)
         }
         McpPluginEvent::Stopped { plugin_id } => {
@@ -627,7 +633,10 @@ fn format_plugin_event(event: &McpPluginEvent) -> String {
         McpPluginEvent::Error { plugin_id, message } => {
             format!("✖ {} error: {}", plugin_id, message)
         }
-        McpPluginEvent::ToolsChanged { plugin_id, tool_count } => {
+        McpPluginEvent::ToolsChanged {
+            plugin_id,
+            tool_count,
+        } => {
             format!("🔧 {} tools changed ({} tools)", plugin_id, tool_count)
         }
         McpPluginEvent::HealthStatus { plugin_id, status } => {
@@ -638,10 +647,18 @@ fn format_plugin_event(event: &McpPluginEvent) -> String {
             };
             format!("🏥 {} is {}", plugin_id, status_text)
         }
-        McpPluginEvent::RestartAttempt { plugin_id, attempt, max_retries } => {
+        McpPluginEvent::RestartAttempt {
+            plugin_id,
+            attempt,
+            max_retries,
+        } => {
             format!("↻ {} restarting ({}/{})", plugin_id, attempt, max_retries)
         }
-        McpPluginEvent::ConfigReloaded { plugins_added, plugins_removed, plugins_updated } => {
+        McpPluginEvent::ConfigReloaded {
+            plugins_added,
+            plugins_removed,
+            plugins_updated,
+        } => {
             format!(
                 "🔄 Config reloaded: +{} -{} ~{}",
                 plugins_added.len(),

@@ -44,13 +44,14 @@ Guidelines:
 Format your responses clearly with:
 - Summary answer first
 - Supporting details from sources
-- Source citations at the end"#.to_string(),
-        personality: None,  // No personality for tool agents
-        model: "anthropic/claude-3.5-haiku".to_string(),  // Lightweight model for speed
+- Source citations at the end"#
+            .to_string(),
+        personality: None, // No personality for tool agents
+        model: "anthropic/claude-3.5-haiku".to_string(), // Lightweight model for speed
         enabled: true,
-        is_primary: false,  // Specialist agent, not primary
+        is_primary: false, // Specialist agent, not primary
         web_search_enabled: true,
-        mcp_extensions: Vec::new(),  // No MCP extensions by default
+        mcp_extensions: Vec::new(), // No MCP extensions by default
     }
 }
 

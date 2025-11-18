@@ -19,9 +19,9 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use std::path::PathBuf;
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// Token usage statistics
@@ -97,7 +97,8 @@ impl StorageService for FileStorageService {
             return Ok(TokenStats::default());
         }
 
-        let content = tokio::fs::read_to_string(&path).await
+        let content = tokio::fs::read_to_string(&path)
+            .await
             .map_err(|e| format!("Failed to read token stats: {}", e))?;
 
         let stats = serde_json::from_str(&content)
@@ -113,7 +114,8 @@ impl StorageService for FileStorageService {
         let content = serde_json::to_string_pretty(stats)
             .map_err(|e| format!("Failed to serialize token stats: {}", e))?;
 
-        tokio::fs::write(&path, content).await
+        tokio::fs::write(&path, content)
+            .await
             .map_err(|e| format!("Failed to write token stats: {}", e))?;
 
         println!("✓ Saved token stats to {:?}", path);
@@ -220,7 +222,11 @@ impl RustbotApp {
 
     /// **Complete workflow** - Load, update, save
     /// Business logic orchestration without knowing storage details
-    pub async fn process_api_call(&mut self, input_tokens: u32, output_tokens: u32) -> Result<(), String> {
+    pub async fn process_api_call(
+        &mut self,
+        input_tokens: u32,
+        output_tokens: u32,
+    ) -> Result<(), String> {
         // Update stats (pure logic)
         self.update_token_usage(input_tokens, output_tokens);
 
@@ -240,9 +246,7 @@ async fn main() {
     println!("=== AFTER REFACTORING - Dependency Injection Pattern ===\n");
 
     // **Production**: Use file storage
-    let storage: Arc<dyn StorageService> = Arc::new(
-        FileStorageService::new(PathBuf::from("."))
-    );
+    let storage: Arc<dyn StorageService> = Arc::new(FileStorageService::new(PathBuf::from(".")));
 
     // Create app with injected storage
     let mut app = RustbotApp::new(storage)

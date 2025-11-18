@@ -28,11 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = Arc::new(tokio::runtime::Runtime::new()?);
 
     // Create API instance
-    let mut api = RustbotApi::new(
-        Arc::clone(&event_bus),
-        Arc::clone(&runtime),
-        20,
-    );
+    let mut api = RustbotApi::new(Arc::clone(&event_bus), Arc::clone(&runtime), 20);
 
     // Create MCP manager with event bus integration
     let mut mcp_manager = McpPluginManager::with_event_bus(Some(Arc::clone(&event_bus)));
@@ -115,7 +111,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .collect();
 
                 println!("✓ Plugin stopped");
-                println!("✓ Tools auto-unregistered (remaining: {})\n", remaining_mcp_tools.len());
+                println!(
+                    "✓ Tools auto-unregistered (remaining: {})\n",
+                    remaining_mcp_tools.len()
+                );
             }
             Err(e) => {
                 println!("⚠️  Could not start plugin: {}", e);

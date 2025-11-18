@@ -8,7 +8,7 @@
 //! - Integration tests: Here - test complete workflows
 //! - Manual tests: examples/mcp_demo.rs - for interactive testing
 
-use rustbot::mcp::{McpPluginManager, McpConfig};
+use rustbot::mcp::{McpConfig, McpPluginManager};
 use std::path::Path;
 
 #[tokio::test]

@@ -142,8 +142,7 @@ fn main() {
     println!("=== BEFORE REFACTORING - Current Pattern ===\n");
 
     // Create new app (loads from filesystem)
-    let mut app = RustbotApp::new()
-        .expect("Failed to create app");
+    let mut app = RustbotApp::new().expect("Failed to create app");
 
     println!("\nInitial stats:");
     println!("  Daily input:  {}", app.token_stats.daily_input);
@@ -163,8 +162,7 @@ fn main() {
     println!("  Total cost:   ${:.4}", app.calculate_cost());
 
     // Save to filesystem
-    app.save_token_stats()
-        .expect("Failed to save token stats");
+    app.save_token_stats().expect("Failed to save token stats");
 
     println!("\n=== Problems with this approach ===");
     println!("❌ Cannot test update_token_usage() without filesystem");

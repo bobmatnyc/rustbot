@@ -158,7 +158,7 @@ mod tests {
         let rustbot_err: RustbotError = io_err.into();
 
         match rustbot_err {
-            RustbotError::IoError(_) => {}, // Success
+            RustbotError::IoError(_) => {} // Success
             _ => panic!("Expected IoError variant"),
         }
     }

@@ -14,8 +14,8 @@ fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 
     // Get API key from environment
-    let api_key = env::var("OPENROUTER_API_KEY")
-        .expect("OPENROUTER_API_KEY environment variable not set");
+    let api_key =
+        env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY environment variable not set");
 
     // Create LLM adapter
     let llm_adapter: Arc<dyn rustbot::llm::LlmAdapter> =
@@ -95,7 +95,10 @@ fn main() -> anyhow::Result<()> {
     println!("Example 4: Clear history");
     println!("─────────────────────────────");
     api.clear_history();
-    println!("History cleared. New message count: {}", api.get_history().len());
+    println!(
+        "History cleared. New message count: {}",
+        api.get_history().len()
+    );
     println!();
 
     println!("✅ Demo completed!");

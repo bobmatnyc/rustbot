@@ -41,10 +41,7 @@ pub enum EventKind {
     UserMessage(String),
 
     /// Message from agent to user
-    AgentMessage {
-        agent_id: String,
-        content: String,
-    },
+    AgentMessage { agent_id: String, content: String },
 
     /// Agent status update
     AgentStatusChange {
@@ -75,15 +72,10 @@ pub enum McpPluginEvent {
     },
 
     /// Plugin successfully stopped
-    Stopped {
-        plugin_id: String,
-    },
+    Stopped { plugin_id: String },
 
     /// Plugin encountered an error
-    Error {
-        plugin_id: String,
-        message: String,
-    },
+    Error { plugin_id: String, message: String },
 
     /// Plugin tools changed (after reload or initialization)
     ToolsChanged {
@@ -131,7 +123,7 @@ pub enum AgentStatus {
     Idle,
     Thinking,
     Responding,
-    ExecutingTool(String),  // Tool name being executed
+    ExecutingTool(String), // Tool name being executed
     Error(String),
 }
 

@@ -1,6 +1,6 @@
+use crate::llm::LlmProvider;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use crate::llm::LlmProvider;
 use std::path::Path;
 
 /// JSON-based agent configuration
@@ -187,8 +187,8 @@ impl JsonAgentConfig {
     /// - JSON parsing errors (invalid syntax, type mismatches)
     /// - Missing required fields (name, provider, model, instruction)
     pub fn from_json(json: &str) -> Result<Self> {
-        let config: JsonAgentConfig = serde_json::from_str(json)
-            .context("Failed to deserialize agent configuration")?;
+        let config: JsonAgentConfig =
+            serde_json::from_str(json).context("Failed to deserialize agent configuration")?;
 
         Ok(config)
     }
@@ -378,7 +378,10 @@ mod tests {
         assert_eq!(config.parameters.temperature, Some(0.7));
         assert_eq!(config.parameters.max_tokens, Some(2048));
         assert!(config.capabilities.web_search);
-        assert_eq!(config.metadata.as_ref().unwrap().tags, vec!["test", "assistant"]);
+        assert_eq!(
+            config.metadata.as_ref().unwrap().tags,
+            vec!["test", "assistant"]
+        );
     }
 
     #[test]
@@ -455,7 +458,10 @@ mod tests {
 
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("requires an API key"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("requires an API key"));
     }
 
     #[test]

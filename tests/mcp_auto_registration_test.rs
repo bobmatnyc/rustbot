@@ -17,16 +17,12 @@ async fn test_automatic_tool_registration_on_started_event() {
     let runtime = Arc::new(tokio::runtime::Runtime::new().unwrap());
 
     // Create API
-    let mut api = RustbotApi::new(
-        Arc::clone(&event_bus),
-        Arc::clone(&runtime),
-        20,
-    );
+    let mut api = RustbotApi::new(Arc::clone(&event_bus), Arc::clone(&runtime), 20);
 
     // Create and configure MCP manager
-    let mcp_manager = Arc::new(Mutex::new(McpPluginManager::with_event_bus(
-        Some(Arc::clone(&event_bus))
-    )));
+    let mcp_manager = Arc::new(Mutex::new(McpPluginManager::with_event_bus(Some(
+        Arc::clone(&event_bus),
+    ))));
     api.set_mcp_manager(Arc::clone(&mcp_manager));
 
     // Wrap API in Arc<Mutex> for auto-registration
@@ -40,14 +36,16 @@ async fn test_automatic_tool_registration_on_started_event() {
 
     // Simulate plugin startup by emitting Started event
     // In real usage, this would be emitted by McpPluginManager when a plugin starts
-    event_bus.publish(Event::new(
-        "mcp_manager".to_string(),
-        "broadcast".to_string(),
-        EventKind::McpPluginEvent(McpPluginEvent::Started {
-            plugin_id: "test_plugin".to_string(),
-            tool_count: 3,
-        }),
-    )).expect("Failed to publish event");
+    event_bus
+        .publish(Event::new(
+            "mcp_manager".to_string(),
+            "broadcast".to_string(),
+            EventKind::McpPluginEvent(McpPluginEvent::Started {
+                plugin_id: "test_plugin".to_string(),
+                tool_count: 3,
+            }),
+        ))
+        .expect("Failed to publish event");
 
     // Wait for auto-registration to process the event
     // Note: In this test we don't have real tools, so the registration will fail
@@ -72,16 +70,12 @@ async fn test_automatic_tool_unregistration_on_stopped_event() {
     let runtime = Arc::new(tokio::runtime::Runtime::new().unwrap());
 
     // Create API
-    let mut api = RustbotApi::new(
-        Arc::clone(&event_bus),
-        Arc::clone(&runtime),
-        20,
-    );
+    let mut api = RustbotApi::new(Arc::clone(&event_bus), Arc::clone(&runtime), 20);
 
     // Create and configure MCP manager
-    let mcp_manager = Arc::new(Mutex::new(McpPluginManager::with_event_bus(
-        Some(Arc::clone(&event_bus))
-    )));
+    let mcp_manager = Arc::new(Mutex::new(McpPluginManager::with_event_bus(Some(
+        Arc::clone(&event_bus),
+    ))));
     api.set_mcp_manager(Arc::clone(&mcp_manager));
 
     // Wrap API in Arc<Mutex> for auto-registration
@@ -94,13 +88,15 @@ async fn test_automatic_tool_unregistration_on_stopped_event() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Simulate plugin shutdown by emitting Stopped event
-    event_bus.publish(Event::new(
-        "mcp_manager".to_string(),
-        "broadcast".to_string(),
-        EventKind::McpPluginEvent(McpPluginEvent::Stopped {
-            plugin_id: "test_plugin".to_string(),
-        }),
-    )).expect("Failed to publish event");
+    event_bus
+        .publish(Event::new(
+            "mcp_manager".to_string(),
+            "broadcast".to_string(),
+            EventKind::McpPluginEvent(McpPluginEvent::Stopped {
+                plugin_id: "test_plugin".to_string(),
+            }),
+        ))
+        .expect("Failed to publish event");
 
     // Wait for auto-unregistration to process the event
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -110,7 +106,9 @@ async fn test_automatic_tool_unregistration_on_stopped_event() {
     let all_tools = api_guard.get_all_tools();
 
     // Should not have any tools from test_plugin
-    assert!(!all_tools.iter().any(|t| t.function.name.starts_with("mcp:test_plugin:")));
+    assert!(!all_tools
+        .iter()
+        .any(|t| t.function.name.starts_with("mcp:test_plugin:")));
 
     println!("✓ Auto-unregistration task successfully handles Stopped events");
 }
@@ -122,11 +120,7 @@ async fn test_auto_registration_handles_missing_manager_gracefully() {
     let runtime = Arc::new(tokio::runtime::Runtime::new().unwrap());
 
     // Create API WITHOUT MCP manager
-    let api = RustbotApi::new(
-        Arc::clone(&event_bus),
-        Arc::clone(&runtime),
-        20,
-    );
+    let api = RustbotApi::new(Arc::clone(&event_bus), Arc::clone(&runtime), 20);
 
     // Wrap API in Arc<Mutex> for auto-registration
     let api = Arc::new(Mutex::new(api));
@@ -167,20 +161,14 @@ async fn test_auto_registration_task_lifetime() {
 
     unsafe {
         ONCE.call_once(|| {
-            TEST_RUNTIME = Some(Arc::new(
-                tokio::runtime::Runtime::new().unwrap()
-            ));
+            TEST_RUNTIME = Some(Arc::new(tokio::runtime::Runtime::new().unwrap()));
         });
     }
 
     let runtime = unsafe { TEST_RUNTIME.clone().unwrap() };
 
     // Create API
-    let api = RustbotApi::new(
-        Arc::clone(&event_bus),
-        runtime,
-        20,
-    );
+    let api = RustbotApi::new(Arc::clone(&event_bus), runtime, 20);
 
     let api = Arc::new(Mutex::new(api));
 

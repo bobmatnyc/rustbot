@@ -14,7 +14,9 @@ fn create_test_api() -> RustbotApi {
     RustbotApiBuilder::new()
         .llm_adapter(llm_adapter)
         .max_history_size(10)
-        .system_instructions("You are a helpful AI assistant with access to web search.".to_string())
+        .system_instructions(
+            "You are a helpful AI assistant with access to web search.".to_string(),
+        )
         .build()
         .expect("Failed to build test API")
 }
@@ -22,10 +24,7 @@ fn create_test_api() -> RustbotApi {
 #[tokio::test]
 async fn test_tool_calling_flow() -> Result<()> {
     // Initialize logging
-    tracing_subscriber::fmt()
-        .with_test_writer()
-        .try_init()
-        .ok();
+    tracing_subscriber::fmt().with_test_writer().try_init().ok();
 
     // Create API instance
     let mut api = create_test_api();
@@ -70,10 +69,7 @@ async fn test_tool_calling_flow() -> Result<()> {
 #[tokio::test]
 async fn test_simple_message_without_tools() -> Result<()> {
     // Initialize logging
-    tracing_subscriber::fmt()
-        .with_test_writer()
-        .try_init()
-        .ok();
+    tracing_subscriber::fmt().with_test_writer().try_init().ok();
 
     // Create API instance
     let mut api = create_test_api();
@@ -111,7 +107,10 @@ async fn test_simple_message_without_tools() -> Result<()> {
 
     // Verify we got some response
     assert!(!full_response.is_empty(), "Response should not be empty");
-    assert!(full_response.contains("4"), "Response should contain the answer");
+    assert!(
+        full_response.contains("4"),
+        "Response should contain the answer"
+    );
 
     Ok(())
 }

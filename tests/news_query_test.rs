@@ -1,6 +1,5 @@
 /// Test to verify web_search tool calling behavior with news queries
 /// This test will show us whether the LLM actually calls the web_search tool or responds directly
-
 use rustbot::agent::config::AgentConfig;
 use rustbot::agent::loader::AgentLoader;
 use rustbot::api::RustbotApi;
@@ -23,8 +22,7 @@ async fn test_news_query_tool_calling() -> Result<()> {
 
     // Load environment
     dotenvy::from_filename(".env.local").ok();
-    let api_key = std::env::var("OPENROUTER_API_KEY")
-        .expect("OPENROUTER_API_KEY must be set");
+    let api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set");
 
     // Create LLM adapter
     let llm_adapter = Arc::from(create_adapter(AdapterType::OpenRouter, api_key));
@@ -35,10 +33,10 @@ async fn test_news_query_tool_calling() -> Result<()> {
 
     println!("📋 Loaded {} agent configurations:", agent_configs.len());
     for config in &agent_configs {
-        println!("   - {} (primary: {}, web_search: {})",
-                 config.id,
-                 config.is_primary,
-                 config.web_search_enabled);
+        println!(
+            "   - {} (primary: {}, web_search: {})",
+            config.id, config.is_primary, config.web_search_enabled
+        );
     }
     println!();
 
@@ -46,13 +44,7 @@ async fn test_news_query_tool_calling() -> Result<()> {
     let event_bus = Arc::new(EventBus::new());
 
     // Create API with loaded agents
-    let mut api = RustbotApi::new(
-        llm_adapter,
-        agent_configs,
-        event_bus,
-        100,
-        String::new(),
-    )?;
+    let mut api = RustbotApi::new(llm_adapter, agent_configs, event_bus, 100, String::new())?;
 
     // Test with a clear news query
     let test_message = "What are today's top news stories?";
@@ -92,8 +84,10 @@ async fn test_news_query_tool_calling() -> Result<()> {
     println!("📊 Response Statistics:");
     println!("   - Total chunks: {}", chunk_count);
     println!("   - Total length: {} chars", full_response.len());
-    println!("   - First 200 chars: {}",
-             &full_response.chars().take(200).collect::<String>());
+    println!(
+        "   - First 200 chars: {}",
+        &full_response.chars().take(200).collect::<String>()
+    );
     println!("===========================================================\n");
 
     // Verify we got a response

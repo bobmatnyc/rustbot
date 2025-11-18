@@ -106,7 +106,10 @@ mod tests {
         assert_eq!(err.to_string(), "Plugin not found: test-plugin");
 
         let err = McpError::Config("Duplicate ID: filesystem".to_string());
-        assert_eq!(err.to_string(), "Configuration error: Duplicate ID: filesystem");
+        assert_eq!(
+            err.to_string(),
+            "Configuration error: Duplicate ID: filesystem"
+        );
     }
 
     #[test]
@@ -115,7 +118,7 @@ mod tests {
         let mcp_err: McpError = io_err.into();
 
         match mcp_err {
-            McpError::Io(_) => {}, // Success
+            McpError::Io(_) => {} // Success
             _ => panic!("Expected IoError variant"),
         }
     }
@@ -128,7 +131,7 @@ mod tests {
         if let Err(json_err) = result {
             let mcp_err: McpError = json_err.into();
             match mcp_err {
-                McpError::Json(_) => {}, // Success
+                McpError::Json(_) => {} // Success
                 _ => panic!("Expected Json variant"),
             }
         }

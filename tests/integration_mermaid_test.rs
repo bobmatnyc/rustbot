@@ -1,7 +1,7 @@
 // Integration test for Mermaid rendering pipeline
 // Tests the complete flow: API → SVG → PNG → Data URL
 
-use rustbot::mermaid::{MermaidRenderer, extract_mermaid_blocks};
+use rustbot::mermaid::{extract_mermaid_blocks, MermaidRenderer};
 
 #[tokio::test]
 async fn test_full_rendering_pipeline() {
@@ -26,10 +26,18 @@ async fn test_full_rendering_pipeline() {
     assert_eq!(png_bytes[3], 0x47, "PNG signature byte 4");
 
     // Verify reasonable size (should be > 1KB for a diagram with text)
-    assert!(png_bytes.len() > 1000, "PNG should be substantial size, got {} bytes", png_bytes.len());
+    assert!(
+        png_bytes.len() > 1000,
+        "PNG should be substantial size, got {} bytes",
+        png_bytes.len()
+    );
 
     // Verify it's not too small (which would indicate missing content)
-    assert!(png_bytes.len() > 5000, "PNG might be missing labels, only {} bytes", png_bytes.len());
+    assert!(
+        png_bytes.len() > 5000,
+        "PNG might be missing labels, only {} bytes",
+        png_bytes.len()
+    );
 }
 
 #[tokio::test]
@@ -52,7 +60,11 @@ async fn test_complex_diagram_with_labels() {
     let png_bytes = result.unwrap();
 
     // Complex diagram with labels should be larger
-    assert!(png_bytes.len() > 15000, "Complex diagram should be large, got {} bytes", png_bytes.len());
+    assert!(
+        png_bytes.len() > 15000,
+        "Complex diagram should be large, got {} bytes",
+        png_bytes.len()
+    );
 }
 
 #[tokio::test]
@@ -73,7 +85,11 @@ async fn test_svg_content_preservation() {
     let bytes1 = result1.unwrap();
     let bytes2 = result2.unwrap();
 
-    assert_eq!(bytes1.len(), bytes2.len(), "Cache should return identical data");
+    assert_eq!(
+        bytes1.len(),
+        bytes2.len(),
+        "Cache should return identical data"
+    );
     assert_eq!(bytes1, bytes2, "Cached data should be identical");
 }
 
@@ -96,9 +112,18 @@ More text"#;
     let (_, _, code) = &blocks[0];
 
     // Verify labels are preserved
-    assert!(code.contains("Important Label"), "First label should be preserved");
-    assert!(code.contains("Another Label"), "Second label should be preserved");
-    assert!(code.contains("Final Label"), "Third label should be preserved");
+    assert!(
+        code.contains("Important Label"),
+        "First label should be preserved"
+    );
+    assert!(
+        code.contains("Another Label"),
+        "Second label should be preserved"
+    );
+    assert!(
+        code.contains("Final Label"),
+        "Third label should be preserved"
+    );
     assert!(code.contains("-->"), "Arrow syntax should be preserved");
 }
 
@@ -115,7 +140,11 @@ async fn test_transparent_background_theme() {
         eprintln!("ERROR: {:?}", e);
     }
 
-    assert!(result.is_ok(), "Should render with theme: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Should render with theme: {:?}",
+        result.err()
+    );
 
     let png_bytes = result.unwrap();
 
@@ -156,11 +185,17 @@ async fn test_api_returns_valid_svg() {
 
     // Verify it's SVG
     let svg_str = String::from_utf8_lossy(&svg_bytes[..100]);
-    assert!(svg_str.contains("<svg") || svg_str.contains("<?xml"),
-            "Should return SVG, got: {}", svg_str);
+    assert!(
+        svg_str.contains("<svg") || svg_str.contains("<?xml"),
+        "Should return SVG, got: {}",
+        svg_str
+    );
 
     // Verify it has content (not empty or error)
-    assert!(svg_bytes.len() > 1000, "SVG should have substantial content");
+    assert!(
+        svg_bytes.len() > 1000,
+        "SVG should have substantial content"
+    );
 }
 
 #[test]
@@ -174,7 +209,16 @@ fn test_data_url_format() {
     let data_url = format!("data:image/png;base64,{}", base64_data);
 
     // Verify format
-    assert!(data_url.starts_with("data:image/png;base64,"), "Should have correct MIME type");
-    assert!(!data_url.starts_with("data:image/svg+xml"), "Should NOT be SVG");
-    assert!(!data_url.starts_with("data:image/jpeg"), "Should NOT be JPEG");
+    assert!(
+        data_url.starts_with("data:image/png;base64,"),
+        "Should have correct MIME type"
+    );
+    assert!(
+        !data_url.starts_with("data:image/svg+xml"),
+        "Should NOT be SVG"
+    );
+    assert!(
+        !data_url.starts_with("data:image/jpeg"),
+        "Should NOT be JPEG"
+    );
 }

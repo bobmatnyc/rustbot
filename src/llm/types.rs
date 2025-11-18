@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::agent::ToolDefinition;
+use serde::{Deserialize, Serialize};
 
 /// Type of LLM adapter to use
 #[derive(Debug, Clone, Copy)]

@@ -28,18 +28,18 @@
 //! - Phase 5: Add event bus integration for status updates
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
+use super::client::McpClient;
 use super::config::McpConfig;
+use super::error::{McpError, Result};
 use super::plugin::{PluginMetadata, PluginState, PluginType, ToolInfo};
 use super::protocol::McpToolDefinition;
-use super::error::{McpError, Result};
 use super::stdio::StdioTransport;
-use super::client::McpClient;
 use super::transport::McpTransport;
 use crate::events::{Event, EventBus, EventKind, McpPluginEvent, PluginHealthStatus};
 
@@ -200,7 +200,8 @@ impl McpPluginManager {
     ///     }
     pub async fn get_plugin_states(&self) -> HashMap<String, PluginState> {
         let plugins = self.plugins.read().await;
-        plugins.iter()
+        plugins
+            .iter()
             .map(|(id, meta)| (id.clone(), meta.state.clone()))
             .collect()
     }
@@ -225,7 +226,8 @@ impl McpPluginManager {
     /// Performance: O(n) where n = number of plugins
     pub async fn list_plugins(&self) -> Vec<PluginInfo> {
         let plugins = self.plugins.read().await;
-        plugins.iter()
+        plugins
+            .iter()
             .map(|(id, meta)| PluginInfo {
                 id: id.clone(),
                 name: meta.name.clone(),
@@ -272,7 +274,10 @@ impl McpPluginManager {
 
         // Get plugin config
         let config = self.config.read().await;
-        let server_config = config.mcp_plugins.local_servers.iter()
+        let server_config = config
+            .mcp_plugins
+            .local_servers
+            .iter()
             .find(|s| s.id == id)
             .ok_or_else(|| McpError::PluginNotFound(id.to_string()))?
             .clone();
@@ -289,7 +294,7 @@ impl McpPluginManager {
         // Create and start transport
         let mut transport = StdioTransport::new(server_config.clone());
         match transport.start().await {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 // Update state to Error
                 let mut plugins = self.plugins.write().await;
@@ -314,7 +319,7 @@ impl McpPluginManager {
         // Create client and initialize
         let mut client = McpClient::new(transport);
         match client.initialize().await {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 // Update state to Error
                 let mut plugins = self.plugins.write().await;
@@ -344,18 +349,23 @@ impl McpPluginManager {
             let mut plugins = self.plugins.write().await;
             if let Some(plugin) = plugins.get_mut(id) {
                 plugin.state = PluginState::Running;
-                plugin.tools = tools.iter().map(|t| ToolInfo {
-                    name: t.name.clone(),
-                    description: t.description.clone(),
-                    input_schema: t.input_schema.clone(),
-                }).collect();
+                plugin.tools = tools
+                    .iter()
+                    .map(|t| ToolInfo {
+                        name: t.name.clone(),
+                        description: t.description.clone(),
+                        input_schema: t.input_schema.clone(),
+                    })
+                    .collect();
             }
         }
 
         // Get updated metadata
         let metadata = {
             let plugins = self.plugins.read().await;
-            plugins.get(id).cloned()
+            plugins
+                .get(id)
+                .cloned()
                 .ok_or_else(|| McpError::PluginNotFound(id.to_string()))?
         };
 
@@ -365,10 +375,10 @@ impl McpPluginManager {
             plugins.get(id).map(|p| p.tools.len()).unwrap_or(0)
         };
 
-        self.running_plugins.write().await.insert(id.to_string(), RunningPlugin {
-            metadata,
-            client,
-        });
+        self.running_plugins
+            .write()
+            .await
+            .insert(id.to_string(), RunningPlugin { metadata, client });
 
         // Emit started event (Phase 3)
         self.emit_event(McpPluginEvent::Started {
@@ -468,30 +478,42 @@ impl McpPluginManager {
         &mut self,
         plugin_id: &str,
         tool_name: &str,
-        arguments: Option<serde_json::Value>
+        arguments: Option<serde_json::Value>,
     ) -> Result<String> {
         // Get running plugin
         let mut running = self.running_plugins.write().await;
-        let plugin = running.get_mut(plugin_id)
-            .ok_or_else(|| McpError::PluginNotFound(format!(
-                "Plugin '{}' not running (call start_plugin() first)", plugin_id
-            )))?;
+        let plugin = running.get_mut(plugin_id).ok_or_else(|| {
+            McpError::PluginNotFound(format!(
+                "Plugin '{}' not running (call start_plugin() first)",
+                plugin_id
+            ))
+        })?;
 
         // Call tool
-        let result = plugin.client.call_tool(tool_name.to_string(), arguments).await?;
+        let result = plugin
+            .client
+            .call_tool(tool_name.to_string(), arguments)
+            .await?;
 
         // Check for tool-level error
         if result.is_error == Some(true) {
             // Tool execution failed - return error text
-            let error_text = result.content.iter()
+            let error_text = result
+                .content
+                .iter()
                 .map(|c| c.text.clone())
                 .collect::<Vec<_>>()
                 .join("\n");
-            return Err(McpError::Protocol(format!("Tool execution error: {}", error_text)));
+            return Err(McpError::Protocol(format!(
+                "Tool execution error: {}",
+                error_text
+            )));
         }
 
         // Extract text from successful result
-        let text = result.content.iter()
+        let text = result
+            .content
+            .iter()
             .map(|c| c.text.clone())
             .collect::<Vec<_>>()
             .join("\n");
@@ -540,11 +562,17 @@ impl McpPluginManager {
         let mut plugins_updated = Vec::new();
 
         // Build maps for comparison
-        let old_servers: HashMap<String, _> = old_config.mcp_plugins.local_servers.iter()
+        let old_servers: HashMap<String, _> = old_config
+            .mcp_plugins
+            .local_servers
+            .iter()
             .map(|s| (s.id.clone(), s))
             .collect();
 
-        let new_servers: HashMap<String, _> = new_config.mcp_plugins.local_servers.iter()
+        let new_servers: HashMap<String, _> = new_config
+            .mcp_plugins
+            .local_servers
+            .iter()
             .map(|s| (s.id.clone(), s))
             .collect();
 
@@ -593,7 +621,10 @@ impl McpPluginManager {
 
                 // Create metadata
                 let metadata = PluginMetadata::new_local_server(server_config);
-                self.plugins.write().await.insert(plugin_id.clone(), metadata);
+                self.plugins
+                    .write()
+                    .await
+                    .insert(plugin_id.clone(), metadata);
 
                 // Start if enabled
                 if server_config.enabled {
@@ -667,15 +698,20 @@ impl McpPluginManager {
     /// ```
     pub async fn get_plugin_tools(&self, plugin_id: &str) -> Result<Vec<McpToolDefinition>> {
         let plugins = self.plugins.read().await;
-        let plugin = plugins.get(plugin_id)
+        let plugin = plugins
+            .get(plugin_id)
             .ok_or_else(|| McpError::PluginNotFound(plugin_id.to_string()))?;
 
         // Convert ToolInfo back to McpToolDefinition
-        let tools = plugin.tools.iter().map(|t| McpToolDefinition {
-            name: t.name.clone(),
-            description: t.description.clone(),
-            input_schema: t.input_schema.clone(),
-        }).collect();
+        let tools = plugin
+            .tools
+            .iter()
+            .map(|t| McpToolDefinition {
+                name: t.name.clone(),
+                description: t.description.clone(),
+                input_schema: t.input_schema.clone(),
+            })
+            .collect();
 
         Ok(tools)
     }
@@ -728,10 +764,15 @@ impl McpPluginManager {
         // Get current restart count and max retries
         let (restart_count, max_retries, auto_restart) = {
             let plugins = self.plugins.read().await;
-            let plugin = plugins.get(plugin_id)
+            let plugin = plugins
+                .get(plugin_id)
                 .ok_or_else(|| McpError::PluginNotFound(plugin_id.to_string()))?;
 
-            (plugin.restart_count, plugin.max_retries, self.is_auto_restart_enabled(plugin_id).await)
+            (
+                plugin.restart_count,
+                plugin.max_retries,
+                self.is_auto_restart_enabled(plugin_id).await,
+            )
         };
 
         // Check if auto-restart is enabled
@@ -744,7 +785,9 @@ impl McpPluginManager {
         if restart_count >= max_retries {
             tracing::error!(
                 "Plugin '{}' exceeded max retries ({}/{}), marking as failed",
-                plugin_id, restart_count, max_retries
+                plugin_id,
+                restart_count,
+                max_retries
             );
 
             // Update state to permanent error
@@ -775,7 +818,10 @@ impl McpPluginManager {
         let delay = Self::calculate_backoff_delay(restart_count);
         tracing::info!(
             "Restarting plugin '{}' in {:?} (attempt {}/{})",
-            plugin_id, delay, restart_count + 1, max_retries
+            plugin_id,
+            delay,
+            restart_count + 1,
+            max_retries
         );
 
         // Publish restart attempt event
@@ -822,7 +868,10 @@ impl McpPluginManager {
         let config = self.config.read().await;
 
         // Check local servers
-        if let Some(server) = config.mcp_plugins.local_servers.iter()
+        if let Some(server) = config
+            .mcp_plugins
+            .local_servers
+            .iter()
             .find(|s| s.id == plugin_id)
         {
             return server.auto_restart;
@@ -971,8 +1020,8 @@ pub struct PluginInfo {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::config::ConfigWatcher;
+    use super::*;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
@@ -1083,7 +1132,10 @@ mod tests {
         let result = manager.load_config(temp_file.path()).await;
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Duplicate plugin ID"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Duplicate plugin ID"));
     }
 
     #[tokio::test]
@@ -1131,13 +1183,34 @@ mod tests {
     #[test]
     fn test_exponential_backoff_calculation() {
         // Test exponential backoff formula
-        assert_eq!(McpPluginManager::calculate_backoff_delay(0), Duration::from_secs(1));
-        assert_eq!(McpPluginManager::calculate_backoff_delay(1), Duration::from_secs(2));
-        assert_eq!(McpPluginManager::calculate_backoff_delay(2), Duration::from_secs(4));
-        assert_eq!(McpPluginManager::calculate_backoff_delay(3), Duration::from_secs(8));
-        assert_eq!(McpPluginManager::calculate_backoff_delay(4), Duration::from_secs(16));
-        assert_eq!(McpPluginManager::calculate_backoff_delay(5), Duration::from_secs(32)); // Max
-        assert_eq!(McpPluginManager::calculate_backoff_delay(10), Duration::from_secs(32)); // Capped at max
+        assert_eq!(
+            McpPluginManager::calculate_backoff_delay(0),
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            McpPluginManager::calculate_backoff_delay(1),
+            Duration::from_secs(2)
+        );
+        assert_eq!(
+            McpPluginManager::calculate_backoff_delay(2),
+            Duration::from_secs(4)
+        );
+        assert_eq!(
+            McpPluginManager::calculate_backoff_delay(3),
+            Duration::from_secs(8)
+        );
+        assert_eq!(
+            McpPluginManager::calculate_backoff_delay(4),
+            Duration::from_secs(16)
+        );
+        assert_eq!(
+            McpPluginManager::calculate_backoff_delay(5),
+            Duration::from_secs(32)
+        ); // Max
+        assert_eq!(
+            McpPluginManager::calculate_backoff_delay(10),
+            Duration::from_secs(32)
+        ); // Capped at max
     }
 
     #[tokio::test]
@@ -1234,7 +1307,10 @@ mod tests {
         assert!(result.is_some());
 
         let new_config = result.unwrap();
-        assert_eq!(new_config.mcp_plugins.local_servers[0].name, "Server 1 Updated");
+        assert_eq!(
+            new_config.mcp_plugins.local_servers[0].name,
+            "Server 1 Updated"
+        );
     }
 
     #[tokio::test]
@@ -1292,7 +1368,10 @@ mod tests {
         // Receive and verify event
         let event = rx.try_recv().unwrap();
         match event.kind {
-            EventKind::McpPluginEvent(crate::events::McpPluginEvent::Started { plugin_id, tool_count }) => {
+            EventKind::McpPluginEvent(crate::events::McpPluginEvent::Started {
+                plugin_id,
+                tool_count,
+            }) => {
                 assert_eq!(plugin_id, "test");
                 assert_eq!(tool_count, 5);
             }

@@ -30,9 +30,9 @@ pub enum SettingsView {
 /// Extensions sub-view (Marketplace, Remote, Local)
 #[derive(PartialEq, Clone)]
 pub enum ExtensionsView {
-    Marketplace,  // Browse available MCP servers
-    Remote,       // Manage remote/cloud services
-    Local,        // View locally installed plugins
+    Marketplace, // Browse available MCP servers
+    Remote,      // Manage remote/cloud services
+    Local,       // View locally installed plugins
 }
 
 impl Default for ExtensionsView {
@@ -79,18 +79,18 @@ pub struct TokenStats {
 /// Context window tracker
 #[derive(Clone)]
 pub struct ContextTracker {
-    pub max_tokens: u32,              // Model's context window (200k for Claude Sonnet 4.5)
-    pub current_tokens: u32,          // Current estimated token usage
-    pub system_tokens: u32,           // Tokens used by system context (dynamic)
-    pub conversation_tokens: u32,     // Tokens used by conversation history
-    pub compaction_threshold: f32,    // Trigger compaction (default: 0.50 = 50%)
-    pub warning_threshold: f32,       // Show warning (default: 0.75 = 75%)
+    pub max_tokens: u32,     // Model's context window (200k for Claude Sonnet 4.5)
+    pub current_tokens: u32, // Current estimated token usage
+    pub system_tokens: u32,  // Tokens used by system context (dynamic)
+    pub conversation_tokens: u32, // Tokens used by conversation history
+    pub compaction_threshold: f32, // Trigger compaction (default: 0.50 = 50%)
+    pub warning_threshold: f32, // Show warning (default: 0.75 = 75%)
 }
 
 impl Default for ContextTracker {
     fn default() -> Self {
         Self {
-            max_tokens: 200_000,      // Claude Sonnet 4.5 context window
+            max_tokens: 200_000, // Claude Sonnet 4.5 context window
             current_tokens: 0,
             system_tokens: 0,
             conversation_tokens: 0,
@@ -112,13 +112,13 @@ impl ContextTracker {
     pub fn get_color(&self) -> egui::Color32 {
         let percentage = self.usage_percentage();
         if percentage < 50.0 {
-            egui::Color32::from_rgb(60, 150, 60)   // Green
+            egui::Color32::from_rgb(60, 150, 60) // Green
         } else if percentage < 75.0 {
-            egui::Color32::from_rgb(200, 180, 50)  // Yellow
+            egui::Color32::from_rgb(200, 180, 50) // Yellow
         } else if percentage < 90.0 {
-            egui::Color32::from_rgb(220, 120, 40)  // Orange
+            egui::Color32::from_rgb(220, 120, 40) // Orange
         } else {
-            egui::Color32::from_rgb(200, 60, 60)   // Red
+            egui::Color32::from_rgb(200, 60, 60) // Red
         }
     }
 

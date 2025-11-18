@@ -112,15 +112,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Try to execute a tool (example: list files in /tmp)
                 println!("🔧 Executing tool: list_directory");
-                match manager.execute_tool(
-                    "filesystem",
-                    "list_directory",
-                    Some(serde_json::json!({"path": "/tmp"}))
-                ).await {
+                match manager
+                    .execute_tool(
+                        "filesystem",
+                        "list_directory",
+                        Some(serde_json::json!({"path": "/tmp"})),
+                    )
+                    .await
+                {
                     Ok(result) => {
                         println!("✓ Tool execution successful!");
-                        println!("   Result preview: {}...",
-                            result.chars().take(200).collect::<String>());
+                        println!(
+                            "   Result preview: {}...",
+                            result.chars().take(200).collect::<String>()
+                        );
                     }
                     Err(e) => {
                         println!("⚠️  Tool execution failed: {}", e);

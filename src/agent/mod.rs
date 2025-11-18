@@ -18,18 +18,15 @@ pub mod config;
 pub mod loader;
 pub mod tools;
 
-use crate::events::{Event, EventBus, EventKind, AgentStatus};
+use crate::events::{AgentStatus, Event, EventBus, EventKind};
 use crate::llm::{LlmAdapter, LlmRequest, Message as LlmMessage, ToolCall};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
-use tokio::runtime::Runtime;
 
 // Re-export JSON configuration types
-pub use config::{
-    AgentCapabilities, AgentMetadata, JsonAgentConfig, ModelParameters,
-};
+pub use config::{AgentCapabilities, AgentMetadata, JsonAgentConfig, ModelParameters};
 pub use loader::AgentLoader;
 pub use tools::{FunctionDefinition, FunctionParameters, ToolDefinition};
 
@@ -92,7 +89,7 @@ impl AgentConfig {
             personality: None,
             model: "openai/gpt-4o".to_string(),
             enabled: true,
-            is_primary: false,  // Default to specialist agent
+            is_primary: false, // Default to specialist agent
             web_search_enabled: false,
             mcp_extensions: Vec::new(),
         }
@@ -107,7 +104,7 @@ impl AgentConfig {
             personality: Some("Be concise, friendly, and professional.".to_string()),
             model: "openai/gpt-4o".to_string(),
             enabled: true,
-            is_primary: true,  // Assistant is the primary agent
+            is_primary: true, // Assistant is the primary agent
             web_search_enabled: false,
             mcp_extensions: Vec::new(),
         }
@@ -155,7 +152,8 @@ For **direct response** intents:
 - Always prefer direct responses when you have reliable knowledge
 - Use web search for time-sensitive or recent information
 - Be transparent about your limitations
-- If unsure, explain what information you'd need to search for"#.to_string()
+- If unsure, explain what information you'd need to search for"#
+            .to_string()
     }
 }
 
@@ -191,8 +189,8 @@ pub struct Agent {
     /// Receiver for events
     event_rx: broadcast::Receiver<Event>,
 
-    /// Tokio runtime for async operations
-    runtime: Arc<Runtime>,
+    /// Tokio runtime handle for async operations
+    runtime: tokio::runtime::Handle,
 
     /// System-level instructions (shared across all agents)
     system_instructions: String,
@@ -207,7 +205,7 @@ impl Agent {
         config: AgentConfig,
         llm_adapter: Arc<dyn LlmAdapter>,
         event_bus: Arc<EventBus>,
-        runtime: Arc<Runtime>,
+        runtime: tokio::runtime::Handle,
         system_instructions: String,
     ) -> Self {
         let event_rx = event_bus.subscribe();
@@ -265,7 +263,10 @@ impl Agent {
 
         // Add agent-specific instructions
         if !self.config.instructions.is_empty() {
-            parts.push(format!("## Agent Instructions\n\n{}", self.config.instructions));
+            parts.push(format!(
+                "## Agent Instructions\n\n{}",
+                self.config.instructions
+            ));
         }
 
         // Add agent personality (only if defined for this agent)
@@ -388,7 +389,7 @@ impl Agent {
         let config_instructions = self.config.instructions.clone();
         let config_personality = self.config.personality.clone();
         let web_search_enabled = self.config.web_search_enabled;
-        let runtime = Arc::clone(&self.runtime);
+        let runtime = self.runtime.clone();
         let agent_id = self.config.id.clone();
         let event_bus = Arc::clone(&self.event_bus);
 
@@ -413,7 +414,10 @@ impl Agent {
             }
             let system_content = parts.join("\n\n");
 
-            tracing::debug!("⏱️  [AGENT] System message built in {:?}", agent_start.elapsed());
+            tracing::debug!(
+                "⏱️  [AGENT] System message built in {:?}",
+                agent_start.elapsed()
+            );
 
             // Build complete message history
             let mut api_messages = Vec::new();
@@ -433,12 +437,18 @@ impl Agent {
                 request.tool_choice = Some("auto".to_string());
 
                 tracing::info!("Processing message with tools enabled");
-                tracing::debug!("⏱️  [AGENT] Starting complete_chat (non-streaming) at {:?}", agent_start.elapsed());
+                tracing::debug!(
+                    "⏱️  [AGENT] Starting complete_chat (non-streaming) at {:?}",
+                    agent_start.elapsed()
+                );
 
                 // Use complete_chat for tool detection
                 match llm_adapter.complete_chat(request).await {
                     Ok(response) => {
-                        tracing::debug!("⏱️  [AGENT] complete_chat finished at {:?}", agent_start.elapsed());
+                        tracing::debug!(
+                            "⏱️  [AGENT] complete_chat finished at {:?}",
+                            agent_start.elapsed()
+                        );
 
                         if let Some(tool_calls) = response.tool_calls {
                             // Tool calls detected - return for execution
@@ -452,10 +462,8 @@ impl Agent {
                                 response.content
                             };
 
-                            api_messages.push(LlmMessage::with_tool_calls(
-                                content,
-                                tool_calls.clone(),
-                            ));
+                            api_messages
+                                .push(LlmMessage::with_tool_calls(content, tool_calls.clone()));
 
                             Ok(AgentResponse::NeedsToolExecution {
                                 tool_calls,
@@ -490,7 +498,10 @@ impl Agent {
             } else {
                 // No tools - use streaming as before
                 tracing::info!("Processing message without tools, using stream_chat");
-                tracing::debug!("⏱️  [AGENT] Starting stream_chat at {:?}", agent_start.elapsed());
+                tracing::debug!(
+                    "⏱️  [AGENT] Starting stream_chat at {:?}",
+                    agent_start.elapsed()
+                );
 
                 let (tx, rx) = mpsc::unbounded_channel();
 
@@ -546,7 +557,7 @@ impl Agent {
         // Clone everything we need
         let llm_adapter = Arc::clone(&self.llm_adapter);
         let web_search_enabled = self.config.web_search_enabled;
-        let runtime = Arc::clone(&self.runtime);
+        let runtime = self.runtime.clone();
         let agent_id = self.config.id.clone();
         let event_bus = Arc::clone(&self.event_bus);
 
@@ -620,9 +631,9 @@ mod tests {
         assert!(config.enabled);
     }
 
-    #[test]
-    fn test_build_system_message() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+    #[tokio::test]
+    async fn test_build_system_message() {
+        let runtime = tokio::runtime::Handle::current();
         let event_bus = Arc::new(EventBus::new());
 
         // Create a mock adapter (we won't actually use it in this test)

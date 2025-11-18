@@ -1,11 +1,11 @@
 // UI view rendering methods for Rustbot
 // Contains all the main view rendering functions extracted from RustbotApp
 
-use crate::ui::{MessageRole, SettingsView, ExtensionsView};
+use crate::ui::{ExtensionsView, MessageRole, SettingsView};
 use eframe::egui;
+use egui_commonmark::CommonMarkViewer;
 use egui_phosphor::regular as icons;
 use std::sync::Arc;
-use egui_commonmark::CommonMarkViewer;
 
 /// Extension trait to add view rendering methods to RustbotApp
 /// This allows us to define methods on RustbotApp from a separate module
@@ -223,12 +223,10 @@ impl crate::RustbotApp {
                     .desired_width(text_edit_width),
             );
 
-            let send_button =
-                ui.add_sized([60.0, 80.0], egui::Button::new(if self.is_waiting {
-                    "..."
-                } else {
-                    "Send"
-                }));
+            let send_button = ui.add_sized(
+                [60.0, 80.0],
+                egui::Button::new(if self.is_waiting { "..." } else { "Send" }),
+            );
 
             // Send on Cmd+Enter or button click
             let cmd_enter = ui.input(|i| {
@@ -242,17 +240,14 @@ impl crate::RustbotApp {
 
         // Compact token tracker under input box
         ui.horizontal(|ui| {
-            let daily_cost = self.calculate_cost(
-                self.token_stats.daily_input,
-                self.token_stats.daily_output,
-            );
-            let total_cost = self.calculate_cost(
-                self.token_stats.total_input,
-                self.token_stats.total_output,
-            );
+            let daily_cost =
+                self.calculate_cost(self.token_stats.daily_input, self.token_stats.daily_output);
+            let total_cost =
+                self.calculate_cost(self.token_stats.total_input, self.token_stats.total_output);
 
             // Get current model from primary agent
-            let model = self.agent_configs
+            let model = self
+                .agent_configs
                 .iter()
                 .find(|config| config.is_primary)
                 .map(|config| {
@@ -282,7 +277,9 @@ impl crate::RustbotApp {
 
             // Copy full chat button
             if ui
-                .button(egui::RichText::new(format!("{} Copy Chat", icons::CLIPBOARD_TEXT)).size(11.0))
+                .button(
+                    egui::RichText::new(format!("{} Copy Chat", icons::CLIPBOARD_TEXT)).size(11.0),
+                )
                 .on_hover_text("Copy full conversation to clipboard")
                 .clicked()
             {
@@ -320,8 +317,10 @@ impl crate::RustbotApp {
             // Draw progress bar
             let available_width = ui.available_width() - 150.0;
             let bar_height = 8.0;
-            let (rect, _response) =
-                ui.allocate_exact_size(egui::vec2(available_width, bar_height), egui::Sense::hover());
+            let (rect, _response) = ui.allocate_exact_size(
+                egui::vec2(available_width, bar_height),
+                egui::Sense::hover(),
+            );
 
             // Background (gray)
             ui.painter()
@@ -475,7 +474,7 @@ impl crate::RustbotApp {
                 ui.label(
                     egui::RichText::new("No event data available")
                         .size(14.0)
-                        .color(egui::Color32::from_rgb(120, 120, 120))
+                        .color(egui::Color32::from_rgb(120, 120, 120)),
                 );
             });
         }
@@ -497,7 +496,7 @@ impl crate::RustbotApp {
                 ui.label(
                     egui::RichText::new("Marketplace view not initialized")
                         .size(14.0)
-                        .color(egui::Color32::from_rgb(120, 120, 120))
+                        .color(egui::Color32::from_rgb(120, 120, 120)),
                 );
             });
         }
@@ -516,28 +515,37 @@ impl crate::RustbotApp {
     pub fn render_extensions_view(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         // Secondary navigation bar (tabs) - similar to Settings view pattern
         ui.horizontal(|ui| {
-            if ui.selectable_label(
-                self.extensions_view == ExtensionsView::Marketplace,
-                format!("{} Marketplace", icons::STOREFRONT)
-            ).clicked() {
+            if ui
+                .selectable_label(
+                    self.extensions_view == ExtensionsView::Marketplace,
+                    format!("{} Marketplace", icons::STOREFRONT),
+                )
+                .clicked()
+            {
                 self.extensions_view = ExtensionsView::Marketplace;
             }
 
             ui.add_space(10.0);
 
-            if ui.selectable_label(
-                self.extensions_view == ExtensionsView::Remote,
-                format!("{} Remote", icons::GLOBE)
-            ).clicked() {
+            if ui
+                .selectable_label(
+                    self.extensions_view == ExtensionsView::Remote,
+                    format!("{} Remote", icons::GLOBE),
+                )
+                .clicked()
+            {
                 self.extensions_view = ExtensionsView::Remote;
             }
 
             ui.add_space(10.0);
 
-            if ui.selectable_label(
-                self.extensions_view == ExtensionsView::Local,
-                format!("{} Local", icons::LIST)
-            ).clicked() {
+            if ui
+                .selectable_label(
+                    self.extensions_view == ExtensionsView::Local,
+                    format!("{} Local", icons::LIST),
+                )
+                .clicked()
+            {
                 self.extensions_view = ExtensionsView::Local;
             }
         });
@@ -570,7 +578,7 @@ impl crate::RustbotApp {
                     ui.label(
                         egui::RichText::new("Remote extension management coming soon...")
                             .size(14.0)
-                            .color(egui::Color32::from_rgb(120, 120, 120))
+                            .color(egui::Color32::from_rgb(120, 120, 120)),
                     );
                     ui.add_space(30.0);
 
@@ -614,7 +622,7 @@ impl crate::RustbotApp {
                 ui.label(
                     egui::RichText::new("Local extensions view not initialized")
                         .size(14.0)
-                        .color(egui::Color32::from_rgb(120, 120, 120))
+                        .color(egui::Color32::from_rgb(120, 120, 120)),
                 );
             });
         }
@@ -667,11 +675,7 @@ impl crate::RustbotApp {
                                 format!("{} {}", icons::ROBOT, config.name)
                             };
 
-                            ui.label(
-                                egui::RichText::new(&icon)
-                                    .strong()
-                                    .size(16.0),
-                            );
+                            ui.label(egui::RichText::new(&icon).strong().size(16.0));
 
                             // Status indicator
                             if config.is_primary {
@@ -698,7 +702,10 @@ impl crate::RustbotApp {
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
                                     // Edit button (for all agents)
-                                    if ui.button(format!("{} Edit", icons::PENCIL_SIMPLE)).clicked() {
+                                    if ui
+                                        .button(format!("{} Edit", icons::PENCIL_SIMPLE))
+                                        .clicked()
+                                    {
                                         self.selected_agent_index = Some(index);
                                     }
 
@@ -724,13 +731,21 @@ impl crate::RustbotApp {
                         // Compact info line
                         ui.horizontal(|ui| {
                             ui.add_space(20.0); // Indent
-                            let role = if config.is_primary { "Primary" } else { "Specialist" };
+                            let role = if config.is_primary {
+                                "Primary"
+                            } else {
+                                "Specialist"
+                            };
                             ui.label(
                                 egui::RichText::new(format!(
                                     "{} • Model: {} • Web Search: {}",
                                     role,
                                     config.model.split('/').last().unwrap_or(&config.model),
-                                    if config.web_search_enabled { "✓" } else { "✗" }
+                                    if config.web_search_enabled {
+                                        "✓"
+                                    } else {
+                                        "✗"
+                                    }
                                 ))
                                 .size(11.0)
                                 .color(egui::Color32::from_rgb(100, 100, 100)),
@@ -781,7 +796,9 @@ impl crate::RustbotApp {
                         let personality_response = ui.add_sized(
                             [ui.available_width() - 20.0, 150.0],
                             egui::TextEdit::multiline(&mut personality_text)
-                                .hint_text("Enter agent personality traits (leave empty for none)...")
+                                .hint_text(
+                                    "Enter agent personality traits (leave empty for none)...",
+                                )
                                 .margin(egui::vec2(8.0, 8.0)),
                         );
 

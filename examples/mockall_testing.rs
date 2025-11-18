@@ -50,7 +50,10 @@ pub struct RustbotApp {
 impl RustbotApp {
     pub async fn new(storage: Arc<dyn StorageService>) -> Result<Self, String> {
         let token_stats = storage.load_token_stats().await?;
-        Ok(Self { storage, token_stats })
+        Ok(Self {
+            storage,
+            token_stats,
+        })
     }
 
     pub async fn save_token_stats(&self) -> Result<(), String> {
@@ -65,7 +68,11 @@ impl RustbotApp {
     }
 
     /// Complete API call workflow with error handling
-    pub async fn process_api_call(&mut self, input_tokens: u32, output_tokens: u32) -> Result<(), String> {
+    pub async fn process_api_call(
+        &mut self,
+        input_tokens: u32,
+        output_tokens: u32,
+    ) -> Result<(), String> {
         // Update stats
         self.update_token_usage(input_tokens, output_tokens);
 
@@ -199,9 +206,7 @@ mod tests {
         // Verify save is called with expected stats
         mock.expect_save_token_stats()
             .times(1)
-            .withf(|stats: &TokenStats| {
-                stats.daily_input == 100 && stats.daily_output == 50
-            })
+            .withf(|stats: &TokenStats| stats.daily_input == 100 && stats.daily_output == 50)
             .returning(|_| Ok(()));
 
         let storage: Arc<dyn StorageService> = Arc::new(mock);
@@ -223,8 +228,7 @@ mod tests {
             .returning(|| Ok(TokenStats::default()));
 
         // Expect save to NEVER be called
-        mock.expect_save_token_stats()
-            .times(0);  // ← Important: verify no saves
+        mock.expect_save_token_stats().times(0); // ← Important: verify no saves
 
         let storage: Arc<dyn StorageService> = Arc::new(mock);
         let app = RustbotApp::new(storage).await.unwrap();
@@ -251,16 +255,14 @@ mod tests {
             .returning(|| Ok(TokenStats::default()));
 
         // Fail twice, succeed third time
-        mock.expect_save_token_stats()
-            .times(3)
-            .returning(move |_| {
-                let count = call_count_clone.fetch_add(1, Ordering::SeqCst);
-                if count < 2 {
-                    Err("Temporary failure".to_string())
-                } else {
-                    Ok(())
-                }
-            });
+        mock.expect_save_token_stats().times(3).returning(move |_| {
+            let count = call_count_clone.fetch_add(1, Ordering::SeqCst);
+            if count < 2 {
+                Err("Temporary failure".to_string())
+            } else {
+                Ok(())
+            }
+        });
 
         let storage: Arc<dyn StorageService> = Arc::new(mock);
         let mut app = RustbotApp::new(storage).await.unwrap();

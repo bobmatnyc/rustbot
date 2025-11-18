@@ -20,12 +20,12 @@
 //! - Agent configs reference which extensions to enable
 //! - API layer loads tools based on agent's enabled extensions
 
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use anyhow::{Context, Result};
 
-use super::config::{LocalServerConfig, CloudServiceConfig};
+use super::config::{CloudServiceConfig, LocalServerConfig};
 use super::marketplace::{McpServerListing, Package};
 
 /// Extension installation state
@@ -55,11 +55,10 @@ impl ExtensionRegistry {
             return Ok(Self::new());
         }
 
-        let content = std::fs::read_to_string(path)
-            .context("Failed to read extension registry")?;
+        let content = std::fs::read_to_string(path).context("Failed to read extension registry")?;
 
-        let registry: Self = serde_json::from_str(&content)
-            .context("Failed to parse extension registry")?;
+        let registry: Self =
+            serde_json::from_str(&content).context("Failed to parse extension registry")?;
 
         Ok(registry)
     }
@@ -67,15 +66,13 @@ impl ExtensionRegistry {
     /// Save registry to file
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .context("Failed to create extensions directory")?;
+            std::fs::create_dir_all(parent).context("Failed to create extensions directory")?;
         }
 
-        let json = serde_json::to_string_pretty(self)
-            .context("Failed to serialize extension registry")?;
+        let json =
+            serde_json::to_string_pretty(self).context("Failed to serialize extension registry")?;
 
-        std::fs::write(path, json)
-            .context("Failed to write extension registry")?;
+        std::fs::write(path, json).context("Failed to write extension registry")?;
 
         Ok(())
     }
@@ -237,7 +234,9 @@ impl ExtensionInstaller {
         &self,
         listing: &McpServerListing,
     ) -> Result<(InstallationType, McpConfigEntry)> {
-        let remote = listing.remotes.first()
+        let remote = listing
+            .remotes
+            .first()
             .context("No remote endpoints available")?;
 
         let config = CloudServiceConfig {
@@ -245,14 +244,17 @@ impl ExtensionInstaller {
             name: listing.name.clone(),
             description: Some(listing.description.clone()),
             url: remote.url.clone(),
-            auth: None, // User must configure authentication
-            enabled: false, // Disabled by default until user configures
+            auth: None,           // User must configure authentication
+            enabled: false,       // Disabled by default until user configures
             max_retries: Some(3), // Default 3 retries
             health_check_interval: None,
             timeout: 30, // Default 30s timeout
         };
 
-        Ok((InstallationType::Remote, McpConfigEntry::CloudService(config)))
+        Ok((
+            InstallationType::Remote,
+            McpConfigEntry::CloudService(config),
+        ))
     }
 
     /// Create local server configuration
@@ -263,12 +265,16 @@ impl ExtensionInstaller {
     ) -> Result<(InstallationType, McpConfigEntry)> {
         // Find appropriate package
         let package = if let Some(pkg_type) = package_type {
-            listing.packages.iter()
+            listing
+                .packages
+                .iter()
                 .find(|p| p.registry_type == pkg_type)
                 .with_context(|| format!("Package type {} not found", pkg_type))?
         } else {
             // Default preference: npm > pypi > oci
-            listing.packages.iter()
+            listing
+                .packages
+                .iter()
                 .find(|p| p.registry_type == "npm")
                 .or_else(|| listing.packages.iter().find(|p| p.registry_type == "pypi"))
                 .or_else(|| listing.packages.iter().find(|p| p.registry_type == "oci"))
@@ -284,7 +290,7 @@ impl ExtensionInstaller {
             command,
             args,
             env: HashMap::new(), // User must configure env vars
-            enabled: false, // Disabled by default
+            enabled: false,      // Disabled by default
             auto_restart: true,
             max_retries: Some(3),
             health_check_interval: None,
@@ -311,7 +317,10 @@ impl ExtensionInstaller {
             "oci" => {
                 // OCI containers use: docker run <image>
                 let image = package.identifier.clone();
-                Ok(("docker".to_string(), vec!["run".to_string(), "-i".to_string(), image]))
+                Ok((
+                    "docker".to_string(),
+                    vec!["run".to_string(), "-i".to_string(), image],
+                ))
             }
             other => anyhow::bail!("Unsupported package type: {}", other),
         }
@@ -319,9 +328,12 @@ impl ExtensionInstaller {
 
     /// Extract required environment variables from listing
     fn extract_required_env_vars(&self, listing: &McpServerListing) -> Vec<String> {
-        listing.packages.iter()
+        listing
+            .packages
+            .iter()
             .flat_map(|pkg| {
-                pkg.environment_variables.iter()
+                pkg.environment_variables
+                    .iter()
                     .map(|env_var| env_var.name.clone())
             })
             .collect()

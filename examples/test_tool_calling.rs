@@ -13,8 +13,7 @@ async fn main() -> anyhow::Result<()> {
     println!("\n==================== TOOL CALLING TEST ====================\n");
 
     // Get API key
-    let api_key = std::env::var("OPENROUTER_API_KEY")
-        .expect("OPENROUTER_API_KEY must be set");
+    let api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set");
 
     // Create LLM adapter
     let llm_adapter: Arc<dyn LlmAdapter> =
@@ -22,7 +21,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Load agents from JSON presets
     let agent_loader = agent::AgentLoader::new();
-    let agent_configs = agent_loader.load_all()
+    let agent_configs = agent_loader
+        .load_all()
         .expect("Failed to load agents from presets");
 
     println!("Loaded {} agent(s)", agent_configs.len());
@@ -34,7 +34,9 @@ async fn main() -> anyhow::Result<()> {
     let mut builder = RustbotApiBuilder::new()
         .llm_adapter(llm_adapter)
         .max_history_size(10)
-        .system_instructions("You are a helpful AI assistant with access to web search.".to_string());
+        .system_instructions(
+            "You are a helpful AI assistant with access to web search.".to_string(),
+        );
 
     for config in agent_configs {
         builder = builder.add_agent(config);

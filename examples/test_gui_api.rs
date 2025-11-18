@@ -16,8 +16,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Load environment
     dotenvy::from_filename(".env.local").ok();
-    let api_key = std::env::var("OPENROUTER_API_KEY")
-        .expect("OPENROUTER_API_KEY must be set");
+    let api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set");
 
     // Create components exactly like the GUI does
     let event_bus = Arc::new(EventBus::new());
@@ -30,8 +29,10 @@ async fn main() -> anyhow::Result<()> {
 
     println!("📋 Loaded {} agents", agent_configs.len());
     for config in &agent_configs {
-        println!("   - {} (primary: {}, enabled: {})", 
-                 config.id, config.is_primary, config.enabled);
+        println!(
+            "   - {} (primary: {}, enabled: {})",
+            config.id, config.is_primary, config.enabled
+        );
     }
 
     // Build API exactly like GUI does
@@ -51,7 +52,9 @@ async fn main() -> anyhow::Result<()> {
     println!("\n🚀 API built, sending test message...\n");
 
     // Send message like GUI does
-    let mut rx = api.send_message("What are today's top news stories?").await?;
+    let mut rx = api
+        .send_message("What are today's top news stories?")
+        .await?;
 
     // Collect response
     let mut response = String::new();

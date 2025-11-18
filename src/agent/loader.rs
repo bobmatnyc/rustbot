@@ -104,9 +104,8 @@ impl AgentLoader {
             .with_context(|| format!("Failed to read agent directory: {:?}", path))?;
 
         for entry in entries {
-            let entry = entry.with_context(|| {
-                format!("Failed to read directory entry in {:?}", path)
-            })?;
+            let entry =
+                entry.with_context(|| format!("Failed to read directory entry in {:?}", path))?;
 
             let entry_path = entry.path();
 
@@ -143,11 +142,13 @@ impl AgentLoader {
             .with_context(|| format!("Failed to parse agent JSON from {:?}", path))?;
 
         // Resolve environment variables
-        json_config.resolve_env_vars()
+        json_config
+            .resolve_env_vars()
             .with_context(|| format!("Failed to resolve environment variables in {:?}", path))?;
 
         // Validate configuration
-        json_config.validate()
+        json_config
+            .validate()
             .with_context(|| format!("Invalid agent configuration in {:?}", path))?;
 
         // Convert to runtime AgentConfig
@@ -261,7 +262,10 @@ mod tests {
         let loader = AgentLoader::new();
         let agent_config = loader.json_to_agent_config(json_config).unwrap();
 
-        assert_eq!(agent_config.personality, Some("Friendly and warm".to_string()));
+        assert_eq!(
+            agent_config.personality,
+            Some("Friendly and warm".to_string())
+        );
         assert!(agent_config.instructions.contains("Be helpful"));
         assert!(agent_config.instructions.contains("Personality"));
     }

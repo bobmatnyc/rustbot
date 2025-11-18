@@ -76,11 +76,7 @@ async fn test_mcp_tool_lifecycle() {
 
     // Verify tools are registered and discoverable
     let available_tools = api.get_all_tools();
-    assert_eq!(
-        available_tools.len(),
-        2,
-        "Should have 2 tools registered"
-    );
+    assert_eq!(available_tools.len(), 2, "Should have 2 tools registered");
 
     // Verify tool naming convention
     let tool_names: Vec<String> = available_tools
@@ -102,8 +98,7 @@ async fn test_mcp_tool_lifecycle() {
         .find(|t| t.function.name == "mcp:filesystem:read_file")
         .expect("read_file tool should exist");
     assert_eq!(
-        read_file_tool.function.description,
-        "Read a file from disk",
+        read_file_tool.function.description, "Read a file from disk",
         "Tool description should match"
     );
     assert!(

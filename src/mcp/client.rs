@@ -195,14 +195,17 @@ impl<T: McpTransport> McpClient<T> {
 
         // Parse result
         let result: InitializeResult = serde_json::from_value(
-            response.result.ok_or_else(|| McpError::Protocol("No result in initialize response".into()))?
+            response
+                .result
+                .ok_or_else(|| McpError::Protocol("No result in initialize response".into()))?,
         )?;
 
         // Validate protocol version
         if result.protocol_version != crate::mcp::MCP_PROTOCOL_VERSION {
             eprintln!(
                 "Warning: Protocol version mismatch. Client: {}, Server: {}",
-                crate::mcp::MCP_PROTOCOL_VERSION, result.protocol_version
+                crate::mcp::MCP_PROTOCOL_VERSION,
+                result.protocol_version
             );
         }
 
@@ -262,7 +265,9 @@ impl<T: McpTransport> McpClient<T> {
     /// ```
     pub async fn list_tools(&mut self) -> Result<Vec<McpToolDefinition>> {
         if !self.initialized {
-            return Err(McpError::Protocol("Client not initialized - call initialize() first".into()));
+            return Err(McpError::Protocol(
+                "Client not initialized - call initialize() first".into(),
+            ));
         }
 
         let request = JsonRpcRequest {
@@ -282,7 +287,9 @@ impl<T: McpTransport> McpClient<T> {
         }
 
         let result: ToolListResult = serde_json::from_value(
-            response.result.ok_or_else(|| McpError::Protocol("No result in tools/list response".into()))?
+            response
+                .result
+                .ok_or_else(|| McpError::Protocol("No result in tools/list response".into()))?,
         )?;
 
         Ok(result.tools)
@@ -323,10 +330,12 @@ impl<T: McpTransport> McpClient<T> {
     pub async fn call_tool(
         &mut self,
         name: String,
-        arguments: Option<serde_json::Value>
+        arguments: Option<serde_json::Value>,
     ) -> Result<ToolCallResult> {
         if !self.initialized {
-            return Err(McpError::Protocol("Client not initialized - call initialize() first".into()));
+            return Err(McpError::Protocol(
+                "Client not initialized - call initialize() first".into(),
+            ));
         }
 
         let params = ToolCallParams { name, arguments };
@@ -348,7 +357,9 @@ impl<T: McpTransport> McpClient<T> {
         }
 
         let result: ToolCallResult = serde_json::from_value(
-            response.result.ok_or_else(|| McpError::Protocol("No result in tools/call response".into()))?
+            response
+                .result
+                .ok_or_else(|| McpError::Protocol("No result in tools/call response".into()))?,
         )?;
 
         Ok(result)
@@ -382,8 +393,8 @@ impl<T: McpTransport> McpClient<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
     use crate::mcp::transport::{JsonRpcResponse, RequestId};
+    use async_trait::async_trait;
 
     // Mock transport for testing
     struct MockTransport {
@@ -393,7 +404,10 @@ mod tests {
 
     impl MockTransport {
         fn new(responses: Vec<JsonRpcResponse>) -> Self {
-            Self { responses, current: 0 }
+            Self {
+                responses,
+                current: 0,
+            }
         }
     }
 

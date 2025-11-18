@@ -40,10 +40,10 @@
 use eframe::egui;
 use egui_phosphor::regular as icons;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tokio::runtime::Handle;
+use tokio::sync::mpsc;
 
-use crate::mcp::marketplace::{MarketplaceClient, McpServerWrapper, McpRegistry};
+use crate::mcp::marketplace::{MarketplaceClient, McpRegistry, McpServerWrapper};
 
 /// Async task result for server list fetch
 enum FetchResult {
@@ -126,7 +126,7 @@ impl MarketplaceView {
             error_message: None,
             current_page: 0,
             total_servers: 0,
-            servers_per_page: 100,  // Use API maximum for better deduplication coverage
+            servers_per_page: 100, // Use API maximum for better deduplication coverage
             next_cursor: None,
             fetch_rx,
             fetch_tx,
@@ -217,10 +217,7 @@ impl MarketplaceView {
 
             // Extract base name (e.g., "filesystem@0.5.1" -> "filesystem")
             // Some servers may not have '@' (already base name)
-            let base_name = name.split('@')
-                .next()
-                .unwrap_or(name)
-                .to_string();
+            let base_name = name.split('@').next().unwrap_or(name).to_string();
 
             match latest_versions.get(&base_name) {
                 None => {
@@ -341,18 +338,46 @@ impl MarketplaceView {
         });
 
         ui.horizontal(|ui| {
-            let changed = ui.checkbox(&mut self.show_official_only, "Official only").changed();
+            let changed = ui
+                .checkbox(&mut self.show_official_only, "Official only")
+                .changed();
 
             ui.label("Package type:");
             let combo_changed = egui::ComboBox::from_id_source("package_type_filter")
                 .selected_text(self.package_type_filter.as_deref().unwrap_or("All"))
                 .show_ui(ui, |ui| {
                     let mut changed = false;
-                    changed |= ui.selectable_value(&mut self.package_type_filter, None, "All").changed();
-                    changed |= ui.selectable_value(&mut self.package_type_filter, Some("npm".to_string()), "npm").changed();
-                    changed |= ui.selectable_value(&mut self.package_type_filter, Some("pypi".to_string()), "PyPI").changed();
-                    changed |= ui.selectable_value(&mut self.package_type_filter, Some("docker".to_string()), "Docker").changed();
-                    changed |= ui.selectable_value(&mut self.package_type_filter, Some("remote".to_string()), "Remote").changed();
+                    changed |= ui
+                        .selectable_value(&mut self.package_type_filter, None, "All")
+                        .changed();
+                    changed |= ui
+                        .selectable_value(
+                            &mut self.package_type_filter,
+                            Some("npm".to_string()),
+                            "npm",
+                        )
+                        .changed();
+                    changed |= ui
+                        .selectable_value(
+                            &mut self.package_type_filter,
+                            Some("pypi".to_string()),
+                            "PyPI",
+                        )
+                        .changed();
+                    changed |= ui
+                        .selectable_value(
+                            &mut self.package_type_filter,
+                            Some("docker".to_string()),
+                            "Docker",
+                        )
+                        .changed();
+                    changed |= ui
+                        .selectable_value(
+                            &mut self.package_type_filter,
+                            Some("remote".to_string()),
+                            "Remote",
+                        )
+                        .changed();
                     changed
                 })
                 .inner
@@ -378,7 +403,10 @@ impl MarketplaceView {
         }
 
         if let Some(error) = &self.error_message {
-            ui.colored_label(egui::Color32::RED, format!("{} Error", icons::WARNING_CIRCLE));
+            ui.colored_label(
+                egui::Color32::RED,
+                format!("{} Error", icons::WARNING_CIRCLE),
+            );
             ui.label(error);
             if ui.button("Retry").clicked() {
                 self.refresh_servers();
@@ -421,9 +449,17 @@ impl MarketplaceView {
                     }
 
                     // Get package type from first package (if available)
-                    let package_type = server.packages.first()
+                    let package_type = server
+                        .packages
+                        .first()
                         .map(|p| p.registry_type.as_str())
-                        .or_else(|| if !server.remotes.is_empty() { Some("remote") } else { None })
+                        .or_else(|| {
+                            if !server.remotes.is_empty() {
+                                Some("remote")
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or("unknown");
 
                     if let Some(ref filter) = self.package_type_filter {
@@ -435,9 +471,7 @@ impl MarketplaceView {
                     // Render server card
                     let is_selected = self.selected_server == Some(idx);
 
-                    let response = ui.add(
-                        egui::SelectableLabel::new(is_selected, &server.name)
-                    );
+                    let response = ui.add(egui::SelectableLabel::new(is_selected, &server.name));
 
                     if response.clicked() {
                         self.selected_server = Some(idx);
@@ -446,7 +480,7 @@ impl MarketplaceView {
                     ui.label(
                         egui::RichText::new(&server.description)
                             .size(11.0)
-                            .color(egui::Color32::from_rgb(120, 120, 120))
+                            .color(egui::Color32::from_rgb(120, 120, 120)),
                     );
 
                     ui.horizontal(|ui| {
@@ -455,15 +489,19 @@ impl MarketplaceView {
 
                         // Official badge
                         if is_official {
-                            ui.label(egui::RichText::new(format!("{} Official", icons::SEAL_CHECK))
-                                .color(egui::Color32::from_rgb(60, 150, 60)));
+                            ui.label(
+                                egui::RichText::new(format!("{} Official", icons::SEAL_CHECK))
+                                    .color(egui::Color32::from_rgb(60, 150, 60)),
+                            );
                         }
 
                         // Version
                         if !server.version.is_empty() {
-                            ui.label(egui::RichText::new(format!("v{}", server.version))
-                                .size(11.0)
-                                .color(egui::Color32::from_rgb(100, 100, 100)));
+                            ui.label(
+                                egui::RichText::new(format!("v{}", server.version))
+                                    .size(11.0)
+                                    .color(egui::Color32::from_rgb(100, 100, 100)),
+                            );
                         }
                     });
 
@@ -476,16 +514,24 @@ impl MarketplaceView {
         if self.total_servers > self.servers_per_page {
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                if ui.button(format!("{} Previous", icons::CARET_LEFT))
-                    .clicked() && self.current_page > 0 {
+                if ui
+                    .button(format!("{} Previous", icons::CARET_LEFT))
+                    .clicked()
+                    && self.current_page > 0
+                {
                     self.current_page -= 1;
                     self.refresh_servers();
                 }
 
-                ui.label(format!("Page {} of {}", self.current_page + 1, self.total_pages()));
+                ui.label(format!(
+                    "Page {} of {}",
+                    self.current_page + 1,
+                    self.total_pages()
+                ));
 
-                if ui.button(format!("{} Next", icons::CARET_RIGHT))
-                    .clicked() && (self.current_page + 1) < self.total_pages() {
+                if ui.button(format!("{} Next", icons::CARET_RIGHT)).clicked()
+                    && (self.current_page + 1) < self.total_pages()
+                {
                     self.current_page += 1;
                     self.refresh_servers();
                 }
@@ -516,13 +562,21 @@ impl MarketplaceView {
                     ui.label(format!("{} Version: {}", icons::GIT_BRANCH, server.version));
                 }
                 if is_official {
-                    ui.label(egui::RichText::new(format!("{} Official Anthropic Server", icons::SEAL_CHECK))
-                        .color(egui::Color32::from_rgb(60, 150, 60)));
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} Official Anthropic Server",
+                            icons::SEAL_CHECK
+                        ))
+                        .color(egui::Color32::from_rgb(60, 150, 60)),
+                    );
                 }
 
                 // Repository link
                 if !server.repository.url.is_empty() {
-                    ui.hyperlink_to(format!("{} View Repository", icons::LINK), &server.repository.url);
+                    ui.hyperlink_to(
+                        format!("{} View Repository", icons::LINK),
+                        &server.repository.url,
+                    );
                 }
 
                 ui.add_space(10.0);
@@ -532,7 +586,11 @@ impl MarketplaceView {
                     ui.label(egui::RichText::new("Installation Packages:").strong());
                     for package in &server.packages {
                         ui.add_space(5.0);
-                        ui.label(format!("{} Type: {}", icons::PACKAGE, package.registry_type));
+                        ui.label(format!(
+                            "{} Type: {}",
+                            icons::PACKAGE,
+                            package.registry_type
+                        ));
                         ui.code(&package.identifier);
 
                         // Environment variables for this package
@@ -540,13 +598,17 @@ impl MarketplaceView {
                             ui.add_space(5.0);
                             ui.label(egui::RichText::new("Environment Variables:").strong());
                             for env_var in &package.environment_variables {
-                                let secret_marker = if env_var.is_secret { " (secret)" } else { "" };
-                                ui.label(format!("• {} = <required>{}", env_var.name, secret_marker));
+                                let secret_marker =
+                                    if env_var.is_secret { " (secret)" } else { "" };
+                                ui.label(format!(
+                                    "• {} = <required>{}",
+                                    env_var.name, secret_marker
+                                ));
                                 if !env_var.description.is_empty() {
                                     ui.label(
                                         egui::RichText::new(format!("  {}", env_var.description))
                                             .size(11.0)
-                                            .color(egui::Color32::from_rgb(120, 120, 120))
+                                            .color(egui::Color32::from_rgb(120, 120, 120)),
                                     );
                                 }
                             }
@@ -568,7 +630,13 @@ impl MarketplaceView {
                 ui.add_space(20.0);
 
                 // Copy config button
-                if ui.button(format!("{} Copy Configuration Snippet", icons::CLIPBOARD_TEXT)).clicked() {
+                if ui
+                    .button(format!(
+                        "{} Copy Configuration Snippet",
+                        icons::CLIPBOARD_TEXT
+                    ))
+                    .clicked()
+                {
                     let config = self.generate_config_snippet(wrapper);
                     ui.output_mut(|o| o.copied_text = config);
                 }
@@ -577,16 +645,19 @@ impl MarketplaceView {
                 ui.label(
                     egui::RichText::new("Paste this into your mcp_config.json file")
                         .size(11.0)
-                        .color(egui::Color32::from_rgb(120, 120, 120))
+                        .color(egui::Color32::from_rgb(120, 120, 120)),
                 );
             }
         } else {
             ui.add_space(20.0);
             ui.vertical_centered(|ui| {
                 ui.label(
-                    egui::RichText::new(format!("{} Select a server to view details", icons::ARROW_LEFT))
-                        .size(14.0)
-                        .color(egui::Color32::from_rgb(120, 120, 120))
+                    egui::RichText::new(format!(
+                        "{} Select a server to view details",
+                        icons::ARROW_LEFT
+                    ))
+                    .size(14.0)
+                    .color(egui::Color32::from_rgb(120, 120, 120)),
                 );
             });
         }
@@ -602,7 +673,10 @@ impl MarketplaceView {
         let (command, args) = if let Some(package) = server.packages.first() {
             // For OCI packages, use docker
             if package.registry_type == "oci" {
-                ("docker".to_string(), vec!["run".to_string(), package.identifier.clone()])
+                (
+                    "docker".to_string(),
+                    vec!["run".to_string(), package.identifier.clone()],
+                )
             } else {
                 // For other packages, basic npx/uvx/etc
                 ("npx".to_string(), vec![package.identifier.clone()])
@@ -610,14 +684,22 @@ impl MarketplaceView {
         } else if let Some(remote) = server.remotes.first() {
             ("mcp-remote".to_string(), vec![remote.url.clone()])
         } else {
-            ("echo".to_string(), vec!["Configure this manually".to_string()])
+            (
+                "echo".to_string(),
+                vec!["Configure this manually".to_string()],
+            )
         };
 
         // Extract environment variables
-        let env = server.packages.first()
-            .map(|p| p.environment_variables.iter()
-                .map(|ev| (ev.name.clone(), "<set_value>".to_string()))
-                .collect::<std::collections::HashMap<_, _>>())
+        let env = server
+            .packages
+            .first()
+            .map(|p| {
+                p.environment_variables
+                    .iter()
+                    .map(|ev| (ev.name.clone(), "<set_value>".to_string()))
+                    .collect::<std::collections::HashMap<_, _>>()
+            })
             .unwrap_or_default();
 
         serde_json::to_string_pretty(&serde_json::json!({
@@ -628,29 +710,42 @@ impl MarketplaceView {
             "args": args,
             "env": env,
             "enabled": true,
-        })).unwrap_or_default()
+        }))
+        .unwrap_or_default()
     }
 
     /// Get count of servers after filtering
     fn get_filtered_count(&self) -> usize {
-        self.servers.iter().filter(|wrapper| {
-            let is_official = wrapper.meta.official.status == "active";
-            if self.show_official_only && !is_official {
-                return false;
-            }
-
-            if let Some(ref filter) = self.package_type_filter {
-                let package_type = wrapper.server.packages.first()
-                    .map(|p| p.registry_type.as_str())
-                    .or_else(|| if !wrapper.server.remotes.is_empty() { Some("remote") } else { None })
-                    .unwrap_or("unknown");
-
-                if package_type != filter.as_str() {
+        self.servers
+            .iter()
+            .filter(|wrapper| {
+                let is_official = wrapper.meta.official.status == "active";
+                if self.show_official_only && !is_official {
                     return false;
                 }
-            }
-            true
-        }).count()
+
+                if let Some(ref filter) = self.package_type_filter {
+                    let package_type = wrapper
+                        .server
+                        .packages
+                        .first()
+                        .map(|p| p.registry_type.as_str())
+                        .or_else(|| {
+                            if !wrapper.server.remotes.is_empty() {
+                                Some("remote")
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or("unknown");
+
+                    if package_type != filter.as_str() {
+                        return false;
+                    }
+                }
+                true
+            })
+            .count()
     }
 
     /// Calculate total pages
@@ -663,8 +758,7 @@ impl MarketplaceView {
 mod tests {
     use super::*;
     use crate::mcp::marketplace::{
-        McpServerWrapper, McpServerListing, ServerMeta, OfficialMetadata,
-        Repository,
+        McpServerListing, McpServerWrapper, OfficialMetadata, Repository, ServerMeta,
     };
 
     /// Helper to create a test server wrapper
@@ -697,10 +791,10 @@ mod tests {
     fn test_deduplicate_servers_keeps_latest_version() {
         // Create test data with duplicate server names
         let servers = vec![
-            create_test_server("filesystem@0.5.1", true),  // Latest
+            create_test_server("filesystem@0.5.1", true), // Latest
             create_test_server("filesystem@0.5.0", false),
             create_test_server("filesystem@0.4.9", false),
-            create_test_server("sqlite@1.2.3", true),      // Latest
+            create_test_server("sqlite@1.2.3", true), // Latest
             create_test_server("sqlite@1.2.2", false),
         ];
 
@@ -710,9 +804,7 @@ mod tests {
         assert_eq!(deduplicated.len(), 2);
 
         // Verify we kept the latest versions
-        let names: Vec<String> = deduplicated.iter()
-            .map(|w| w.server.name.clone())
-            .collect();
+        let names: Vec<String> = deduplicated.iter().map(|w| w.server.name.clone()).collect();
 
         assert!(names.contains(&"filesystem@0.5.1".to_string()));
         assert!(names.contains(&"sqlite@1.2.3".to_string()));
@@ -750,7 +842,7 @@ mod tests {
     #[test]
     fn test_deduplicate_servers_handles_names_without_version() {
         let servers = vec![
-            create_test_server("filesystem", true),  // No @ symbol
+            create_test_server("filesystem", true), // No @ symbol
             create_test_server("sqlite@1.2.3", true),
         ];
 

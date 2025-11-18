@@ -131,19 +131,20 @@ impl MermaidRenderer {
         // Call mermaid.ink API
         let url = format!("https://mermaid.ink/svg/{}", encoded);
 
-        tracing::debug!("Rendering mermaid diagram via API: {} chars", mermaid_code.len());
+        tracing::debug!(
+            "Rendering mermaid diagram via API: {} chars",
+            mermaid_code.len()
+        );
 
         // Make request with timeout (5 seconds)
-        let response = self.client
-            .get(&url)
-            .send()
-            .await?;
+        let response = self.client.get(&url).send().await?;
 
         // Check if request succeeded
         if !response.status().is_success() {
-            return Err(MermaidError::InvalidSyntax(
-                format!("API returned status: {}", response.status())
-            ));
+            return Err(MermaidError::InvalidSyntax(format!(
+                "API returned status: {}",
+                response.status()
+            )));
         }
 
         // Check content type to detect error responses
@@ -152,7 +153,7 @@ impl MermaidRenderer {
             if let Ok(ct) = content_type.to_str() {
                 if ct.contains("text/html") {
                     return Err(MermaidError::InvalidSyntax(
-                        "Invalid mermaid syntax - API returned HTML error".to_string()
+                        "Invalid mermaid syntax - API returned HTML error".to_string(),
                     ));
                 }
             }
@@ -163,9 +164,11 @@ impl MermaidRenderer {
 
         // Validate we got SVG data (should start with "<?xml" or "<svg")
         if let Ok(svg_str) = std::str::from_utf8(&svg_bytes[..svg_bytes.len().min(100)]) {
-            if !svg_str.trim_start().starts_with("<?xml") && !svg_str.trim_start().starts_with("<svg") {
+            if !svg_str.trim_start().starts_with("<?xml")
+                && !svg_str.trim_start().starts_with("<svg")
+            {
                 return Err(MermaidError::InvalidSyntax(
-                    "API did not return valid SVG data".to_string()
+                    "API did not return valid SVG data".to_string(),
                 ));
             }
         }
@@ -173,7 +176,8 @@ impl MermaidRenderer {
         tracing::info!("✓ Rendered mermaid diagram: {} bytes", svg_bytes.len());
 
         // Cache the result
-        self.cache.insert(mermaid_code.to_string(), svg_bytes.clone());
+        self.cache
+            .insert(mermaid_code.to_string(), svg_bytes.clone());
 
         Ok(svg_bytes)
     }
@@ -206,25 +210,33 @@ impl MermaidRenderer {
         // which mermaid.ink uses for text labels
         let url = format!("https://mermaid.ink/img/{}", encoded);
 
-        tracing::debug!("Rendering mermaid diagram as PNG via API: {} chars", mermaid_code.len());
+        tracing::debug!(
+            "Rendering mermaid diagram as PNG via API: {} chars",
+            mermaid_code.len()
+        );
 
         // Make request with timeout (5 seconds)
-        let response = self.client
-            .get(&url)
-            .send()
-            .await?;
+        let response = self.client.get(&url).send().await?;
 
         // Check for success
         if !response.status().is_success() {
             let status = response.status();
-            let error_body = response.text().await.unwrap_or_else(|_| "Unable to read error body".to_string());
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unable to read error body".to_string());
 
-            tracing::error!("mermaid.ink API error: HTTP {} - URL: {} - Error: {}",
-                status, url, error_body);
+            tracing::error!(
+                "mermaid.ink API error: HTTP {} - URL: {} - Error: {}",
+                status,
+                url,
+                error_body
+            );
 
-            return Err(MermaidError::InvalidSyntax(
-                format!("API returned HTTP {} - {}", status, error_body)
-            ));
+            return Err(MermaidError::InvalidSyntax(format!(
+                "API returned HTTP {} - {}",
+                status, error_body
+            )));
         }
 
         // Get JPEG bytes from mermaid.ink /img/ endpoint
@@ -237,16 +249,19 @@ impl MermaidRenderer {
             if &jpeg_bytes[0..3] != &[0xFF, 0xD8, 0xFF] {
                 tracing::warn!("API returned non-JPEG data");
                 return Err(MermaidError::InvalidSyntax(
-                    "API did not return valid JPEG data".to_string()
+                    "API did not return valid JPEG data".to_string(),
                 ));
             }
         } else {
             return Err(MermaidError::InvalidSyntax(
-                "API returned empty or invalid data".to_string()
+                "API returned empty or invalid data".to_string(),
             ));
         }
 
-        tracing::info!("✓ Rendered mermaid diagram as JPEG: {} bytes", jpeg_bytes.len());
+        tracing::info!(
+            "✓ Rendered mermaid diagram as JPEG: {} bytes",
+            jpeg_bytes.len()
+        );
 
         // Cache the JPEG result
         self.cache.insert(cache_key, jpeg_bytes.clone());
@@ -314,7 +329,8 @@ impl MermaidRenderer {
         resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
 
         // Encode as PNG
-        let png_data = pixmap.encode_png()
+        let png_data = pixmap
+            .encode_png()
             .map_err(|e| MermaidError::EncodingError(format!("Failed to encode PNG: {}", e)))?;
 
         Ok(png_data)
@@ -377,9 +393,9 @@ pub fn extract_mermaid_blocks(markdown: &str) -> Vec<(usize, usize, String)> {
 
                 // Calculate the full block end position
                 let block_end = if end_pos == 0 {
-                    code_start + 3  // Just the closing ```
+                    code_start + 3 // Just the closing ```
                 } else {
-                    code_end + 4  // \n```
+                    code_end + 4 // \n```
                 };
 
                 // Store block position and content
@@ -514,6 +530,10 @@ More text"#;
 
         let png_bytes = result.unwrap();
         assert!(!png_bytes.is_empty(), "PNG should not be empty");
-        assert_eq!(&png_bytes[0..4], &[0x89, 0x50, 0x4E, 0x47], "Should have PNG signature");
+        assert_eq!(
+            &png_bytes[0..4],
+            &[0x89, 0x50, 0x4E, 0x47],
+            "Should have PNG signature"
+        );
     }
 }

@@ -25,7 +25,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
-use super::config::{LocalServerConfig, CloudServiceConfig};
+use super::config::{CloudServiceConfig, LocalServerConfig};
 
 /// Plugin lifecycle state
 ///
@@ -180,7 +180,9 @@ pub struct PluginMetadata {
 }
 
 // Default value for max_retries
-fn default_max_retries() -> u32 { 5 }
+fn default_max_retries() -> u32 {
+    5
+}
 
 /// Tool information from MCP tools/list response
 ///

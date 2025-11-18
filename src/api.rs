@@ -3,20 +3,20 @@
 // Design principle: All functionality accessible programmatically
 
 use crate::agent::{Agent, AgentConfig, AgentResponse, ToolDefinition};
-use crate::events::{Event, EventBus, EventKind, AgentStatus};
-use crate::llm::{Message as LlmMessage, LlmAdapter};
-use crate::mcp::protocol::McpToolDefinition;
-use crate::mcp::manager::McpPluginManager;
+use crate::events::{AgentStatus, Event, EventBus, EventKind};
+use crate::llm::{LlmAdapter, Message as LlmMessage};
 use crate::mcp::extensions::ExtensionRegistry;
+use crate::mcp::manager::McpPluginManager;
+use crate::mcp::protocol::McpToolDefinition;
 use crate::tool_executor::ToolExecutor;
-use anyhow::{Result, Context as AnyhowContext};
+use anyhow::{Context as AnyhowContext, Result};
 use async_trait::async_trait;
 use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
 use std::path::PathBuf;
-use tokio::sync::{mpsc, Mutex};
-use tokio::sync::RwLock;
+use std::sync::Arc;
 use tokio::runtime::Runtime;
+use tokio::sync::RwLock;
+use tokio::sync::{mpsc, Mutex};
 
 /// Tool source identifier for routing execution
 #[derive(Debug, Clone, PartialEq)]
@@ -81,19 +81,15 @@ pub struct RustbotApi {
 
 impl RustbotApi {
     /// Create a new API instance
-    pub fn new(
-        event_bus: Arc<EventBus>,
-        runtime: Arc<Runtime>,
-        max_history_size: usize,
-    ) -> Self {
+    pub fn new(event_bus: Arc<EventBus>, runtime: Arc<Runtime>, max_history_size: usize) -> Self {
         // Load extension registry from default path
         let registry_path = PathBuf::from(dirs::home_dir().unwrap_or_default())
             .join(".rustbot")
             .join("extensions")
             .join("registry.json");
 
-        let extension_registry = ExtensionRegistry::load(&registry_path)
-            .unwrap_or_else(|_| ExtensionRegistry::new());
+        let extension_registry =
+            ExtensionRegistry::load(&registry_path).unwrap_or_else(|_| ExtensionRegistry::new());
 
         Self {
             event_bus,
@@ -142,10 +138,18 @@ impl RustbotApi {
     /// - Adds tool to global tool registry
     /// - Updates available_tools list
     /// - Tool becomes visible to agents
-    pub async fn register_mcp_tool(&mut self, tool: McpToolDefinition, plugin_id: String) -> Result<()> {
+    pub async fn register_mcp_tool(
+        &mut self,
+        tool: McpToolDefinition,
+        plugin_id: String,
+    ) -> Result<()> {
         let tool_name = format!("mcp:{}:{}", plugin_id, tool.name);
 
-        tracing::debug!("Registering MCP tool: {} from plugin {}", tool_name, plugin_id);
+        tracing::debug!(
+            "Registering MCP tool: {} from plugin {}",
+            tool_name,
+            plugin_id
+        );
 
         // Check for duplicates
         {
@@ -161,16 +165,23 @@ impl RustbotApi {
         // Store in MCP registry
         {
             let mut mcp_tools = self.mcp_tools.write().await;
-            mcp_tools.insert(tool_name.clone(), McpToolRegistry {
-                definition: tool,
-                plugin_id: plugin_id.clone(),
-            });
+            mcp_tools.insert(
+                tool_name.clone(),
+                McpToolRegistry {
+                    definition: tool,
+                    plugin_id: plugin_id.clone(),
+                },
+            );
         }
 
         // Add to available tools list
         self.available_tools.push(rustbot_tool);
 
-        tracing::info!("MCP tool registered: {} (total tools: {})", tool_name, self.available_tools.len());
+        tracing::info!(
+            "MCP tool registered: {} (total tools: {})",
+            tool_name,
+            self.available_tools.len()
+        );
 
         Ok(())
     }
@@ -210,9 +221,8 @@ impl RustbotApi {
         };
 
         // Remove from available tools list
-        self.available_tools.retain(|tool| {
-            !removed_tools.contains(&tool.function.name)
-        });
+        self.available_tools
+            .retain(|tool| !removed_tools.contains(&tool.function.name));
 
         tracing::info!(
             "Unregistered {} MCP tools from plugin {} (remaining tools: {})",
@@ -248,7 +258,10 @@ impl RustbotApi {
     fn parse_mcp_tool_name(tool_name: &str) -> Result<(String, String)> {
         let parts: Vec<&str> = tool_name.split(':').collect();
         if parts.len() != 3 || parts[0] != "mcp" {
-            anyhow::bail!("Invalid MCP tool name format: '{}' (expected 'mcp:plugin_id:tool_name')", tool_name);
+            anyhow::bail!(
+                "Invalid MCP tool name format: '{}' (expected 'mcp:plugin_id:tool_name')",
+                tool_name
+            );
         }
 
         Ok((parts[1].to_string(), parts[2].to_string()))
@@ -292,7 +305,10 @@ impl RustbotApi {
     /// Build tool definitions from all enabled specialist agents
     /// This should be called whenever agent configs change (enable/disable)
     fn build_tool_definitions(&self) -> Vec<ToolDefinition> {
-        tracing::info!("🔍 [DEBUG] build_tool_definitions called with {} agent configs", self.agent_configs.len());
+        tracing::info!(
+            "🔍 [DEBUG] build_tool_definitions called with {} agent configs",
+            self.agent_configs.len()
+        );
 
         // 🔍 DEBUG: Log which configs are enabled specialists
         for config in &self.agent_configs {
@@ -306,7 +322,10 @@ impl RustbotApi {
         }
 
         let tools = ToolDefinition::from_agents(&self.agent_configs);
-        tracing::info!("🔍 [DEBUG] build_tool_definitions returning {} tools", tools.len());
+        tracing::info!(
+            "🔍 [DEBUG] build_tool_definitions returning {} tools",
+            tools.len()
+        );
         tools
     }
 
@@ -320,10 +339,7 @@ impl RustbotApi {
     ///
     /// # Returns
     /// Vector of tool definitions from the agent's enabled extensions
-    async fn get_agent_extension_tools(
-        &self,
-        agent_config: &AgentConfig,
-    ) -> Vec<ToolDefinition> {
+    async fn get_agent_extension_tools(&self, agent_config: &AgentConfig) -> Vec<ToolDefinition> {
         let extension_tools = Vec::new();
 
         // If agent has no extensions enabled, return empty list
@@ -392,7 +408,8 @@ impl RustbotApi {
 
         // 🔍 DEBUG: Log tool names
         if !self.available_tools.is_empty() {
-            let tool_names: Vec<&str> = self.available_tools
+            let tool_names: Vec<&str> = self
+                .available_tools
                 .iter()
                 .map(|t| t.function.name.as_str())
                 .collect();
@@ -452,10 +469,14 @@ impl RustbotApi {
             while let Ok(event) = rx.recv().await {
                 if let EventKind::McpPluginEvent(plugin_event) = event.kind {
                     match plugin_event {
-                        crate::events::McpPluginEvent::Started { plugin_id, tool_count } => {
+                        crate::events::McpPluginEvent::Started {
+                            plugin_id,
+                            tool_count,
+                        } => {
                             tracing::info!(
                                 "Plugin '{}' started with {} tools, auto-registering...",
-                                plugin_id, tool_count
+                                plugin_id,
+                                tool_count
                             );
 
                             // Get tools from plugin via MCP manager
@@ -467,7 +488,9 @@ impl RustbotApi {
                                         mgr.get_plugin_tools(&plugin_id).await
                                     }
                                     None => {
-                                        tracing::warn!("MCP manager not configured, cannot register tools");
+                                        tracing::warn!(
+                                            "MCP manager not configured, cannot register tools"
+                                        );
                                         continue;
                                     }
                                 }
@@ -481,12 +504,16 @@ impl RustbotApi {
                                     // Register each tool
                                     for tool in tools {
                                         let mut api_guard = api.lock().await;
-                                        match api_guard.register_mcp_tool(tool, plugin_id.clone()).await {
+                                        match api_guard
+                                            .register_mcp_tool(tool, plugin_id.clone())
+                                            .await
+                                        {
                                             Ok(_) => registered_count += 1,
                                             Err(e) => {
                                                 tracing::error!(
                                                     "Failed to register tool from plugin '{}': {}",
-                                                    plugin_id, e
+                                                    plugin_id,
+                                                    e
                                                 );
                                                 failed_count += 1;
                                             }
@@ -495,29 +522,39 @@ impl RustbotApi {
 
                                     tracing::info!(
                                         "✓ Auto-registered {} tools for plugin '{}' ({} failed)",
-                                        registered_count, plugin_id, failed_count
+                                        registered_count,
+                                        plugin_id,
+                                        failed_count
                                     );
                                 }
                                 Err(e) => {
                                     tracing::error!(
                                         "Failed to get tools from plugin '{}': {}",
-                                        plugin_id, e
+                                        plugin_id,
+                                        e
                                     );
                                 }
                             }
                         }
                         crate::events::McpPluginEvent::Stopped { plugin_id } => {
-                            tracing::info!("Plugin '{}' stopped, auto-unregistering tools...", plugin_id);
+                            tracing::info!(
+                                "Plugin '{}' stopped, auto-unregistering tools...",
+                                plugin_id
+                            );
 
                             let mut api_guard = api.lock().await;
                             match api_guard.unregister_mcp_tools(&plugin_id).await {
                                 Ok(_) => {
-                                    tracing::info!("✓ Auto-unregistered tools for plugin '{}'", plugin_id);
+                                    tracing::info!(
+                                        "✓ Auto-unregistered tools for plugin '{}'",
+                                        plugin_id
+                                    );
                                 }
                                 Err(e) => {
                                     tracing::error!(
                                         "Failed to unregister tools for plugin '{}': {}",
-                                        plugin_id, e
+                                        plugin_id,
+                                        e
                                     );
                                 }
                             }
@@ -575,10 +612,7 @@ impl RustbotApi {
     /// Send a user message and get a streaming response
     /// This is the programmatic equivalent of typing a message in the UI
     /// Returns a channel that will stream the agent's response chunks
-    pub async fn send_message(
-        &mut self,
-        message: &str,
-    ) -> Result<mpsc::UnboundedReceiver<String>> {
+    pub async fn send_message(&mut self, message: &str) -> Result<mpsc::UnboundedReceiver<String>> {
         let start_time = std::time::Instant::now();
         tracing::debug!("⏱️  [PERF] send_message started");
 
@@ -592,7 +626,8 @@ impl RustbotApi {
 
         // 🔍 DEBUG: Log all available tool names
         if !self.available_tools.is_empty() {
-            let tool_names: Vec<&str> = self.available_tools
+            let tool_names: Vec<&str> = self
+                .available_tools
                 .iter()
                 .map(|t| t.function.name.as_str())
                 .collect();
@@ -614,7 +649,8 @@ impl RustbotApi {
 
         // Get context messages (last N messages) - WITHOUT adding current message yet
         // The agent will receive the current message separately and add it to context
-        let context_messages: Vec<LlmMessage> = self.message_history
+        let context_messages: Vec<LlmMessage> = self
+            .message_history
             .iter()
             .take(self.max_history_size)
             .cloned()
@@ -632,18 +668,26 @@ impl RustbotApi {
                 status: AgentStatus::Thinking,
             },
         ));
-        tracing::debug!("⏱️  [PERF] Published thinking status at {:?}", start_time.elapsed());
+        tracing::debug!(
+            "⏱️  [PERF] Published thinking status at {:?}",
+            start_time.elapsed()
+        );
 
         // Find active agent
-        let agent = self.agents
+        let agent = self
+            .agents
             .iter()
             .find(|a| a.id() == self.active_agent_id)
             .context("Active agent not found")?;
 
         // Determine if we should pass tools (only for primary agent)
-        tracing::info!("🔍 [DEBUG] Looking for agent config with id = '{}'", self.active_agent_id);
+        tracing::info!(
+            "🔍 [DEBUG] Looking for agent config with id = '{}'",
+            self.active_agent_id
+        );
 
-        let agent_config = self.agent_configs
+        let agent_config = self
+            .agent_configs
             .iter()
             .find(|c| c.id == self.active_agent_id);
 
@@ -658,7 +702,10 @@ impl RustbotApi {
                 );
             }
             None => {
-                tracing::error!("🔍 [DEBUG] CRITICAL: No agent config found for active_agent_id='{}'!", self.active_agent_id);
+                tracing::error!(
+                    "🔍 [DEBUG] CRITICAL: No agent config found for active_agent_id='{}'!",
+                    self.active_agent_id
+                );
             }
         }
 
@@ -698,7 +745,10 @@ impl RustbotApi {
             tracing::debug!(
                 "Passing {} tools to primary agent: {:?}",
                 tool_list.len(),
-                tool_list.iter().map(|t| &t.function.name).collect::<Vec<_>>()
+                tool_list
+                    .iter()
+                    .map(|t| &t.function.name)
+                    .collect::<Vec<_>>()
             );
         }
 
@@ -708,25 +758,34 @@ impl RustbotApi {
                 "🔧 [API] Passing {} tools to agent '{}': {:?}",
                 tool_list.len(),
                 self.active_agent_id,
-                tool_list.iter().map(|t| &t.function.name).collect::<Vec<_>>()
+                tool_list
+                    .iter()
+                    .map(|t| &t.function.name)
+                    .collect::<Vec<_>>()
             );
         } else {
-            tracing::info!("🔧 [API] No tools passed to agent '{}'", self.active_agent_id);
+            tracing::info!(
+                "🔧 [API] No tools passed to agent '{}'",
+                self.active_agent_id
+            );
         }
 
         // Process message through agent (non-blocking)
-        tracing::debug!("⏱️  [PERF] Starting agent processing at {:?}", start_time.elapsed());
-        let mut result_rx = agent.process_message_nonblocking(
-            message.to_string(),
-            context_messages,
-            tools,
+        tracing::debug!(
+            "⏱️  [PERF] Starting agent processing at {:?}",
+            start_time.elapsed()
         );
+        let mut result_rx =
+            agent.process_message_nonblocking(message.to_string(), context_messages, tools);
 
         // Add user message to history AFTER sending to agent
         // This ensures the next message will have this one as context
         let user_msg = LlmMessage::new("user", message);
-        tracing::debug!("📝 [HISTORY] Adding USER message - content_len: {}, total_history: {}",
-            user_msg.content.len(), self.message_history.len() + 1);
+        tracing::debug!(
+            "📝 [HISTORY] Adding USER message - content_len: {}, total_history: {}",
+            user_msg.content.len(),
+            self.message_history.len() + 1
+        );
         self.message_history.push_back(user_msg);
 
         // Trim history if needed
@@ -735,16 +794,24 @@ impl RustbotApi {
         }
 
         // Wait for the agent response and handle tool execution if needed
-        tracing::debug!("⏱️  [PERF] Waiting for agent response at {:?}", start_time.elapsed());
-        let agent_response_result = result_rx.recv().await
-            .context("No response from agent")?;
+        tracing::debug!(
+            "⏱️  [PERF] Waiting for agent response at {:?}",
+            start_time.elapsed()
+        );
+        let agent_response_result = result_rx.recv().await.context("No response from agent")?;
 
-        tracing::debug!("⏱️  [PERF] Agent response received at {:?}", start_time.elapsed());
+        tracing::debug!(
+            "⏱️  [PERF] Agent response received at {:?}",
+            start_time.elapsed()
+        );
 
         match agent_response_result {
             Ok(AgentResponse::StreamingResponse(stream)) => {
                 // No tools needed - return stream directly
-                tracing::debug!("⏱️  [PERF] Streaming response started at {:?}", start_time.elapsed());
+                tracing::debug!(
+                    "⏱️  [PERF] Streaming response started at {:?}",
+                    start_time.elapsed()
+                );
 
                 // Publish responding status
                 let _ = self.event_bus.publish(Event::new(
@@ -758,9 +825,18 @@ impl RustbotApi {
 
                 Ok(stream)
             }
-            Ok(AgentResponse::NeedsToolExecution { tool_calls, mut messages }) => {
-                tracing::info!("Tool execution required: {} tools to execute", tool_calls.len());
-                tracing::debug!("⏱️  [PERF] Tool execution phase started at {:?}", start_time.elapsed());
+            Ok(AgentResponse::NeedsToolExecution {
+                tool_calls,
+                mut messages,
+            }) => {
+                tracing::info!(
+                    "Tool execution required: {} tools to execute",
+                    tool_calls.len()
+                );
+                tracing::debug!(
+                    "⏱️  [PERF] Tool execution phase started at {:?}",
+                    start_time.elapsed()
+                );
 
                 // CRITICAL FIX: Add the assistant message with tool calls to conversation history
                 // The messages array from the agent includes: [...context, user_msg, assistant_with_tool_calls]
@@ -781,8 +857,13 @@ impl RustbotApi {
 
                 // Execute each tool call sequentially
                 for (idx, tool_call) in tool_calls.iter().enumerate() {
-                    tracing::info!("Executing tool {}/{}: {} (ID: {})",
-                        idx + 1, tool_calls.len(), tool_call.name, tool_call.id);
+                    tracing::info!(
+                        "Executing tool {}/{}: {} (ID: {})",
+                        idx + 1,
+                        tool_calls.len(),
+                        tool_call.name,
+                        tool_call.id
+                    );
 
                     // Publish tool execution status
                     let event = Event::new(
@@ -801,13 +882,25 @@ impl RustbotApi {
                     let args_str = tool_call.arguments.to_string();
                     let result = self.execute_tool(&tool_call.name, &args_str).await?;
 
-                    tracing::info!("Tool {} completed in {:?}, result length: {} chars",
-                        tool_call.name, tool_start.elapsed(), result.len());
-                    tracing::debug!("⏱️  [PERF] Tool {}/{} completed at {:?} (took {:?})",
-                        idx + 1, tool_calls.len(), start_time.elapsed(), tool_start.elapsed());
+                    tracing::info!(
+                        "Tool {} completed in {:?}, result length: {} chars",
+                        tool_call.name,
+                        tool_start.elapsed(),
+                        result.len()
+                    );
+                    tracing::debug!(
+                        "⏱️  [PERF] Tool {}/{} completed at {:?} (took {:?})",
+                        idx + 1,
+                        tool_calls.len(),
+                        start_time.elapsed(),
+                        tool_start.elapsed()
+                    );
 
                     // Add tool result to messages array for current request
-                    messages.push(LlmMessage::tool_result(tool_call.id.clone(), result.clone()));
+                    messages.push(LlmMessage::tool_result(
+                        tool_call.id.clone(),
+                        result.clone(),
+                    ));
 
                     // CRITICAL FIX: Add actual tool result content to conversation history
                     // (Previously stored placeholder "Tool executed", now stores actual result for better context)
@@ -819,15 +912,22 @@ impl RustbotApi {
                         tracing::warn!("⚠️  [HISTORY] Tool result for {} is EMPTY - adding anyway (required for conversation flow)", tool_call.id);
                     }
 
-                    self.message_history.push_back(LlmMessage::tool_result(tool_call.id.clone(), result));
+                    self.message_history
+                        .push_back(LlmMessage::tool_result(tool_call.id.clone(), result));
                 }
 
                 // Make follow-up request with tool results to get final response
                 tracing::info!("All tools executed, requesting final response from agent");
-                tracing::debug!("⏱️  [PERF] All tools completed at {:?}, requesting final response", start_time.elapsed());
+                tracing::debug!(
+                    "⏱️  [PERF] All tools completed at {:?}, requesting final response",
+                    start_time.elapsed()
+                );
 
                 // DEBUG: Log messages array to diagnose empty content error
-                tracing::debug!("Messages array before process_with_results ({} messages):", messages.len());
+                tracing::debug!(
+                    "Messages array before process_with_results ({} messages):",
+                    messages.len()
+                );
                 for (idx, msg) in messages.iter().enumerate() {
                     tracing::debug!(
                         "  Message[{}]: role={}, content_len={}, has_tool_calls={}, has_tool_call_id={}",
@@ -844,7 +944,10 @@ impl RustbotApi {
                 // Wait for the final streaming response
                 let final_stream = match final_result_rx.recv().await {
                     Some(Ok(stream)) => {
-                        tracing::debug!("⏱️  [PERF] Final streaming response started at {:?}", start_time.elapsed());
+                        tracing::debug!(
+                            "⏱️  [PERF] Final streaming response started at {:?}",
+                            start_time.elapsed()
+                        );
                         Ok(stream)
                     }
                     Some(Err(e)) => Err(e),
@@ -880,13 +983,15 @@ impl RustbotApi {
         // This is a simplified blocking version that doesn't support tool execution
         // For full functionality with tool support, use the async send_message() method
 
-        let context_messages: Vec<LlmMessage> = self.message_history
+        let context_messages: Vec<LlmMessage> = self
+            .message_history
             .iter()
             .take(self.max_history_size)
             .cloned()
             .collect();
 
-        let agent = self.agents
+        let agent = self
+            .agents
             .iter()
             .find(|a| a.id() == self.active_agent_id)
             .context("Active agent not found")?;
@@ -897,7 +1002,8 @@ impl RustbotApi {
             None, // No tools in blocking mode to keep it simple
         );
 
-        self.message_history.push_back(LlmMessage::new("user", message));
+        self.message_history
+            .push_back(LlmMessage::new("user", message));
 
         while self.message_history.len() > self.max_history_size {
             self.message_history.pop_front();
@@ -924,7 +1030,8 @@ impl RustbotApi {
         // CRITICAL: Only add assistant message if it has content
         // Anthropic API rejects messages with empty content
         if !full_response.is_empty() {
-            self.message_history.push_back(LlmMessage::new("assistant", full_response.clone()));
+            self.message_history
+                .push_back(LlmMessage::new("assistant", full_response.clone()));
         } else {
             tracing::warn!("⚠️  Skipping empty assistant message in history");
         }
@@ -935,7 +1042,10 @@ impl RustbotApi {
     /// Clear the message history
     /// This is the programmatic equivalent of the "Clear" button
     pub fn clear_history(&mut self) {
-        tracing::info!("🗑️  Clearing conversation history ({} messages)", self.message_history.len());
+        tracing::info!(
+            "🗑️  Clearing conversation history ({} messages)",
+            self.message_history.len()
+        );
         self.message_history.clear();
 
         // Publish clear conversation event to notify all subscribers
@@ -971,7 +1081,8 @@ impl RustbotApi {
     /// Publish a custom event to the event bus
     /// This allows external code to participate in the event system
     pub fn publish_event(&self, event: Event) -> Result<()> {
-        self.event_bus.publish(event)
+        self.event_bus
+            .publish(event)
             .map(|_| ())
             .map_err(|e| anyhow::anyhow!("Failed to publish event: {:?}", e))
     }
@@ -985,17 +1096,26 @@ impl RustbotApi {
     /// Add an assistant response to the message history
     /// This should be called after receiving the complete response from streaming
     pub fn add_assistant_response(&mut self, response: String) {
-        tracing::debug!("📝 [HISTORY] add_assistant_response called - response_len: {}, total_history: {}",
-            response.len(), self.message_history.len());
+        tracing::debug!(
+            "📝 [HISTORY] add_assistant_response called - response_len: {}, total_history: {}",
+            response.len(),
+            self.message_history.len()
+        );
 
         // CRITICAL: Only add assistant message if it has content
         // Anthropic API rejects messages with empty content
         if !response.is_empty() {
-            tracing::debug!("📝 [HISTORY] Adding FINAL ASSISTANT response - content_len: {}, total_history: {}",
-                response.len(), self.message_history.len() + 1);
-            self.message_history.push_back(LlmMessage::new("assistant", response));
+            tracing::debug!(
+                "📝 [HISTORY] Adding FINAL ASSISTANT response - content_len: {}, total_history: {}",
+                response.len(),
+                self.message_history.len() + 1
+            );
+            self.message_history
+                .push_back(LlmMessage::new("assistant", response));
         } else {
-            tracing::warn!("⚠️  [HISTORY] BLOCKED: Skipping empty assistant message in add_assistant_response");
+            tracing::warn!(
+                "⚠️  [HISTORY] BLOCKED: Skipping empty assistant message in add_assistant_response"
+            );
         }
 
         // Trim history if needed
@@ -1022,7 +1142,8 @@ impl ToolExecutor for RustbotApi {
         tracing::debug!("Routing to specialist agent: {}", tool_name);
 
         // Find the specialist agent matching the tool name
-        let specialist_agent = self.agents
+        let specialist_agent = self
+            .agents
             .iter()
             .find(|a| a.id() == tool_name)
             .context(format!("Specialist agent '{}' not found", tool_name))?;
@@ -1034,8 +1155,8 @@ impl ToolExecutor for RustbotApi {
         // Execute the specialist agent with no context and no tools
         let mut result_rx = specialist_agent.process_message_nonblocking(
             prompt,
-            vec![],  // No conversation context for tool execution
-            None,    // Specialist agents don't get tools
+            vec![], // No conversation context for tool execution
+            None,   // Specialist agents don't get tools
         );
 
         // Await and collect the result
@@ -1088,7 +1209,8 @@ impl RustbotApi {
         );
 
         // Get MCP manager
-        let manager = self.mcp_manager
+        let manager = self
+            .mcp_manager
             .as_ref()
             .context("MCP plugin manager not configured")?;
 
@@ -1096,8 +1218,10 @@ impl RustbotApi {
         let args_json: Option<serde_json::Value> = if arguments.trim().is_empty() {
             None
         } else {
-            Some(serde_json::from_str(arguments)
-                .context(format!("Invalid JSON arguments for MCP tool '{}': {}", tool_name, arguments))?)
+            Some(serde_json::from_str(arguments).context(format!(
+                "Invalid JSON arguments for MCP tool '{}': {}",
+                tool_name, arguments
+            ))?)
         };
 
         // Execute tool via manager
@@ -1182,10 +1306,11 @@ impl RustbotApiBuilder {
     /// Build the RustbotApi instance
     pub fn build(self) -> Result<RustbotApi> {
         let event_bus = self.event_bus.unwrap_or_else(|| Arc::new(EventBus::new()));
-        let runtime = self.runtime.unwrap_or_else(|| Arc::new(Runtime::new().unwrap()));
+        let runtime = self
+            .runtime
+            .unwrap_or_else(|| Arc::new(Runtime::new().unwrap()));
 
-        let llm_adapter = self.llm_adapter
-            .context("LLM adapter must be provided")?;
+        let llm_adapter = self.llm_adapter.context("LLM adapter must be provided")?;
 
         let mut api = RustbotApi::new(
             Arc::clone(&event_bus),
@@ -1202,7 +1327,7 @@ impl RustbotApiBuilder {
                 config,
                 Arc::clone(&llm_adapter),
                 Arc::clone(&event_bus),
-                Arc::clone(&runtime),
+                runtime.handle().clone(),
                 self.system_instructions.clone(),
             );
             api.register_agent(agent);
@@ -1361,7 +1486,8 @@ mod tests {
         assert!(RustbotApi::parse_mcp_tool_name("filesystem:read_file").is_err());
         assert!(RustbotApi::parse_mcp_tool_name("mcp:filesystem").is_err());
         assert!(RustbotApi::parse_mcp_tool_name("read_file").is_err());
-        assert!(RustbotApi::parse_mcp_tool_name("mcp:filesystem:read:file").is_err()); // Too many parts
+        assert!(RustbotApi::parse_mcp_tool_name("mcp:filesystem:read:file").is_err());
+        // Too many parts
     }
 
     #[test]
@@ -1381,15 +1507,15 @@ mod tests {
             }),
         };
 
-        let rustbot_tool =
-            RustbotApi::convert_mcp_tool_to_rustbot(&mcp_tool, "filesystem", "mcp:filesystem:read_file");
+        let rustbot_tool = RustbotApi::convert_mcp_tool_to_rustbot(
+            &mcp_tool,
+            "filesystem",
+            "mcp:filesystem:read_file",
+        );
 
         assert_eq!(rustbot_tool.tool_type, "function");
         assert_eq!(rustbot_tool.function.name, "mcp:filesystem:read_file");
-        assert_eq!(
-            rustbot_tool.function.description,
-            "Read contents of a file"
-        );
+        assert_eq!(rustbot_tool.function.description, "Read contents of a file");
         assert!(rustbot_tool.function.parameters.properties.is_object());
     }
 
@@ -1401,8 +1527,11 @@ mod tests {
             input_schema: serde_json::json!({"type": "object"}),
         };
 
-        let rustbot_tool =
-            RustbotApi::convert_mcp_tool_to_rustbot(&mcp_tool, "filesystem", "mcp:filesystem:read_file");
+        let rustbot_tool = RustbotApi::convert_mcp_tool_to_rustbot(
+            &mcp_tool,
+            "filesystem",
+            "mcp:filesystem:read_file",
+        );
 
         // Should generate a default description
         assert!(rustbot_tool.function.description.contains("filesystem"));
@@ -1421,7 +1550,7 @@ mod tests {
             AgentConfig::default_assistant(),
             adapter,
             event_bus,
-            runtime,
+            runtime.handle().clone(),
             String::new(),
         );
 
@@ -1444,7 +1573,7 @@ mod tests {
             AgentConfig::default_assistant(),
             Arc::clone(&adapter),
             Arc::clone(&event_bus),
-            Arc::clone(&runtime),
+            runtime.handle().clone(),
             String::new(),
         );
         api.register_agent(agent1);
@@ -1457,7 +1586,7 @@ mod tests {
             config2,
             adapter,
             Arc::clone(&event_bus),
-            runtime,
+            runtime.handle().clone(),
             String::new(),
         );
         api.register_agent(agent2);

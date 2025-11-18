@@ -1,17 +1,16 @@
 // Comprehensive tests for RustbotApi
 // Tests all API functionality without requiring UI
 
-use rustbot::api::{RustbotApi, RustbotApiBuilder};
 use rustbot::agent::AgentConfig;
-use rustbot::events::{Event, EventBus, EventKind, AgentStatus};
+use rustbot::api::{RustbotApi, RustbotApiBuilder};
+use rustbot::events::{AgentStatus, Event, EventBus, EventKind};
 use rustbot::llm::{create_adapter, AdapterType, LlmAdapter, Message as LlmMessage};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
 /// Create a test API instance with mock LLM adapter
 fn create_test_api() -> RustbotApi {
-    let api_key = std::env::var("OPENROUTER_API_KEY")
-        .unwrap_or_else(|_| "test-key".to_string());
+    let api_key = std::env::var("OPENROUTER_API_KEY").unwrap_or_else(|_| "test-key".to_string());
 
     let llm_adapter: Arc<dyn LlmAdapter> =
         Arc::from(create_adapter(AdapterType::OpenRouter, api_key));
@@ -45,8 +44,10 @@ fn test_agent_registration() {
 
     let event_bus = Arc::new(EventBus::new());
     let runtime = Arc::new(Runtime::new().unwrap());
-    let llm_adapter: Arc<dyn LlmAdapter> =
-        Arc::from(create_adapter(AdapterType::OpenRouter, "test-key".to_string()));
+    let llm_adapter: Arc<dyn LlmAdapter> = Arc::from(create_adapter(
+        AdapterType::OpenRouter,
+        "test-key".to_string(),
+    ));
 
     let agent = rustbot::agent::Agent::new(
         custom_config,
@@ -75,8 +76,10 @@ fn test_agent_switching() {
 
     let event_bus = Arc::new(EventBus::new());
     let runtime = Arc::new(Runtime::new().unwrap());
-    let llm_adapter: Arc<dyn LlmAdapter> =
-        Arc::from(create_adapter(AdapterType::OpenRouter, "test-key".to_string()));
+    let llm_adapter: Arc<dyn LlmAdapter> = Arc::from(create_adapter(
+        AdapterType::OpenRouter,
+        "test-key".to_string(),
+    ));
 
     let agent = rustbot::agent::Agent::new(
         custom_config,
@@ -125,7 +128,7 @@ fn test_agent_status() {
 
     // Status should be Idle initially
     match status {
-        Some(AgentStatus::Idle) => {}, // Expected
+        Some(AgentStatus::Idle) => {} // Expected
         _ => panic!("Expected agent to be Idle initially"),
     }
 }
@@ -153,10 +156,7 @@ fn test_event_subscription() {
     // Try to receive the event (non-blocking)
     let runtime = Runtime::new().unwrap();
     let received = runtime.block_on(async {
-        tokio::time::timeout(
-            std::time::Duration::from_millis(100),
-            event_rx.recv()
-        ).await
+        tokio::time::timeout(std::time::Duration::from_millis(100), event_rx.recv()).await
     });
 
     // Should receive the event we published
@@ -201,9 +201,7 @@ fn test_builder_pattern() {
 #[test]
 fn test_builder_requires_llm_adapter() {
     // Builder should fail if LLM adapter is not provided
-    let result = RustbotApiBuilder::new()
-        .max_history_size(20)
-        .build();
+    let result = RustbotApiBuilder::new().max_history_size(20).build();
 
     assert!(result.is_err());
 }
@@ -278,7 +276,8 @@ fn test_send_message_integration() {
         .expect("Failed to build API");
 
     // Send a simple message
-    let response = api.send_message_blocking("Say 'Hello' in one word")
+    let response = api
+        .send_message_blocking("Say 'Hello' in one word")
         .expect("Failed to send message");
 
     // Verify we got a response
@@ -312,7 +311,8 @@ fn test_streaming_integration() {
     let runtime = Runtime::new().unwrap();
 
     // Send message with streaming
-    let mut result_rx = api.send_message("Count to 3")
+    let mut result_rx = api
+        .send_message("Count to 3")
         .expect("Failed to send message");
 
     // Collect streaming chunks

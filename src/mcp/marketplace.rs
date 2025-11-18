@@ -80,8 +80,15 @@ impl MarketplaceClient {
     /// let registry = client.list_servers(20, 0).await?;
     /// println!("Found {} servers", registry.servers.len());
     /// ```
-    pub async fn list_servers(&self, limit: usize, offset: usize) -> Result<McpRegistry, MarketplaceError> {
-        let url = format!("{}/servers?limit={}&offset={}", self.base_url, limit, offset);
+    pub async fn list_servers(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<McpRegistry, MarketplaceError> {
+        let url = format!(
+            "{}/servers?limit={}&offset={}",
+            self.base_url, limit, offset
+        );
         let response = self.http_client.get(&url).send().await?;
 
         // Check for HTTP errors before parsing
@@ -110,7 +117,11 @@ impl MarketplaceClient {
     /// let client = MarketplaceClient::new();
     /// let results = client.search_servers("filesystem", 20).await?;
     /// ```
-    pub async fn search_servers(&self, query: &str, limit: usize) -> Result<McpRegistry, MarketplaceError> {
+    pub async fn search_servers(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<McpRegistry, MarketplaceError> {
         let url = format!("{}/servers?search={}&limit={}", self.base_url, query, limit);
         let response = self.http_client.get(&url).send().await?;
 

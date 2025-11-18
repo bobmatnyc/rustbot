@@ -36,11 +36,11 @@
 //! - Add stderr capture and logging
 
 use async_trait::async_trait;
+use std::process::Stdio;
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::Mutex;
-use std::process::Stdio;
-use std::sync::Arc;
 
 use crate::mcp::config::LocalServerConfig;
 use crate::mcp::error::{McpError, Result};
@@ -173,27 +173,28 @@ impl StdioTransport {
         // - stdout: Pipe (we read JSON-RPC responses)
         // - stderr: Inherit (for debugging - shows in terminal)
         cmd.stdin(Stdio::piped())
-           .stdout(Stdio::piped())
-           .stderr(Stdio::inherit());
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit());
 
         // Spawn process
-        let mut child = cmd.spawn()
-            .map_err(|e| McpError::Transport(format!(
+        let mut child = cmd.spawn().map_err(|e| {
+            McpError::Transport(format!(
                 "Failed to spawn MCP server '{}': {} (command: {})",
                 self.config.name, e, self.config.command
-            )))?;
+            ))
+        })?;
 
         // Take ownership of stdin (for writing requests)
-        let stdin = child.stdin.take()
-            .ok_or_else(|| McpError::Transport(
-                "Failed to capture stdin for MCP server".into()
-            ))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| McpError::Transport("Failed to capture stdin for MCP server".into()))?;
 
         // Take ownership of stdout (for reading responses)
-        let stdout = child.stdout.take()
-            .ok_or_else(|| McpError::Transport(
-                "Failed to capture stdout for MCP server".into()
-            ))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| McpError::Transport("Failed to capture stdout for MCP server".into()))?;
 
         // Store process handles
         self.stdin = Some(stdin);
@@ -228,22 +229,28 @@ impl StdioTransport {
     /// - Async to avoid blocking UI thread
     async fn read_response(&self) -> Result<JsonRpcResponse> {
         let mut stdout = self.stdout.lock().await;
-        let reader = stdout.as_mut()
+        let reader = stdout
+            .as_mut()
             .ok_or_else(|| McpError::Transport("No stdout available".into()))?;
 
         // Read one line (JSON-RPC messages are newline-delimited)
         let mut line = String::new();
-        reader.read_line(&mut line).await
+        reader
+            .read_line(&mut line)
+            .await
             .map_err(|e| McpError::Transport(format!("Failed to read from MCP server: {}", e)))?;
 
         // Check for EOF (process died)
         if line.is_empty() {
-            return Err(McpError::Transport("MCP server connection closed (EOF)".into()));
+            return Err(McpError::Transport(
+                "MCP server connection closed (EOF)".into(),
+            ));
         }
 
         // Parse JSON-RPC response
-        serde_json::from_str(&line)
-            .map_err(|e| McpError::Protocol(format!("Invalid JSON-RPC response from MCP server: {}", e)))
+        serde_json::from_str(&line).map_err(|e| {
+            McpError::Protocol(format!("Invalid JSON-RPC response from MCP server: {}", e))
+        })
     }
 
     /// Write one JSON-RPC message to stdin
@@ -254,7 +261,9 @@ impl StdioTransport {
     /// - Broken pipe (process died): Returns Transport error
     /// - Serialization failure: Returns Protocol error
     async fn write_request(&mut self, request: &JsonRpcRequest) -> Result<()> {
-        let stdin = self.stdin.as_mut()
+        let stdin = self
+            .stdin
+            .as_mut()
             .ok_or_else(|| McpError::Transport("No stdin available".into()))?;
 
         // Serialize to JSON
@@ -262,14 +271,20 @@ impl StdioTransport {
             .map_err(|e| McpError::Protocol(format!("Failed to serialize request: {}", e)))?;
 
         // Write JSON + newline
-        stdin.write_all(json.as_bytes()).await
+        stdin
+            .write_all(json.as_bytes())
+            .await
             .map_err(|e| McpError::Transport(format!("Failed to write to MCP server: {}", e)))?;
 
-        stdin.write_all(b"\n").await
+        stdin
+            .write_all(b"\n")
+            .await
             .map_err(|e| McpError::Transport(format!("Failed to write newline: {}", e)))?;
 
         // Flush to ensure immediate delivery
-        stdin.flush().await
+        stdin
+            .flush()
+            .await
             .map_err(|e| McpError::Transport(format!("Failed to flush stdin: {}", e)))?;
 
         Ok(())
@@ -352,7 +367,8 @@ mod tests {
             enabled: true,
             auto_restart: false,
             max_retries: None,
-            health_check_interval: None,            timeout: 60,
+            health_check_interval: None,
+            timeout: 60,
             working_dir: None,
         };
 
@@ -372,7 +388,8 @@ mod tests {
             enabled: true,
             auto_restart: false,
             max_retries: None,
-            health_check_interval: None,            timeout: 60,
+            health_check_interval: None,
+            timeout: 60,
             working_dir: None,
         };
 
@@ -399,7 +416,8 @@ mod tests {
             enabled: true,
             auto_restart: false,
             max_retries: None,
-            health_check_interval: None,            timeout: 60,
+            health_check_interval: None,
+            timeout: 60,
             working_dir: None,
         };
 

@@ -197,18 +197,13 @@ pub enum AuthConfig {
     ///
     /// Example:
     ///     { "type": "bearer", "token": "${API_TOKEN}" }
-    Bearer {
-        token: String,
-    },
+    Bearer { token: String },
 
     /// Basic authentication (Authorization: Basic <base64(user:pass)>)
     ///
     /// Example:
     ///     { "type": "basic", "username": "user", "password": "${PASSWORD}" }
-    Basic {
-        username: String,
-        password: String,
-    },
+    Basic { username: String, password: String },
 
     /// OAuth 2.1 authentication (future implementation)
     ///
@@ -229,8 +224,12 @@ pub enum AuthConfig {
 }
 
 // Default value helpers for serde
-fn default_true() -> bool { true }
-fn default_timeout() -> u64 { 60 }
+fn default_true() -> bool {
+    true
+}
+fn default_timeout() -> u64 {
+    60
+}
 
 impl McpConfig {
     /// Load configuration from a JSON file
@@ -276,11 +275,17 @@ impl McpConfig {
                 return Err(McpError::Config("Plugin name cannot be empty".to_string()));
             }
             if server.command.is_empty() {
-                return Err(McpError::Config(format!("Plugin '{}' has empty command", server.id)));
+                return Err(McpError::Config(format!(
+                    "Plugin '{}' has empty command",
+                    server.id
+                )));
             }
 
             if !ids.insert(&server.id) {
-                return Err(McpError::Config(format!("Duplicate plugin ID: {}", server.id)));
+                return Err(McpError::Config(format!(
+                    "Duplicate plugin ID: {}",
+                    server.id
+                )));
             }
         }
 
@@ -293,11 +298,17 @@ impl McpConfig {
                 return Err(McpError::Config("Plugin name cannot be empty".to_string()));
             }
             if service.url.is_empty() {
-                return Err(McpError::Config(format!("Plugin '{}' has empty URL", service.id)));
+                return Err(McpError::Config(format!(
+                    "Plugin '{}' has empty URL",
+                    service.id
+                )));
             }
 
             if !ids.insert(&service.id) {
-                return Err(McpError::Config(format!("Duplicate plugin ID: {}", service.id)));
+                return Err(McpError::Config(format!(
+                    "Duplicate plugin ID: {}",
+                    service.id
+                )));
             }
         }
 
@@ -329,7 +340,7 @@ impl McpConfig {
 /// - Variable not found: Returns Config error with variable name
 pub fn resolve_env_var(value: &str) -> Result<String> {
     if value.starts_with("${") && value.ends_with("}") {
-        let var_name = &value[2..value.len()-1];
+        let var_name = &value[2..value.len() - 1];
         std::env::var(var_name)
             .map_err(|_| McpError::Config(format!("Environment variable not found: {}", var_name)))
     } else {
@@ -460,24 +471,22 @@ mod tests {
     fn test_config_serialization() {
         let config = McpConfig {
             mcp_plugins: McpPlugins {
-                local_servers: vec![
-                    LocalServerConfig {
-                        id: "test".to_string(),
-                        name: "Test Server".to_string(),
-                        description: None,
-                        command: "echo".to_string(),
-                        args: vec!["hello".to_string()],
-                        env: HashMap::new(),
-                        enabled: true,
-                        auto_restart: false,
-                        max_retries: Some(5),
-                        health_check_interval: Some(30),
-                        timeout: 60,
-                        working_dir: None,
-                    }
-                ],
+                local_servers: vec![LocalServerConfig {
+                    id: "test".to_string(),
+                    name: "Test Server".to_string(),
+                    description: None,
+                    command: "echo".to_string(),
+                    args: vec!["hello".to_string()],
+                    env: HashMap::new(),
+                    enabled: true,
+                    auto_restart: false,
+                    max_retries: Some(5),
+                    health_check_interval: Some(30),
+                    timeout: 60,
+                    working_dir: None,
+                }],
                 cloud_services: vec![],
-            }
+            },
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -519,15 +528,18 @@ mod tests {
                         health_check_interval: None,
                         timeout: 60,
                         working_dir: None,
-                    }
+                    },
                 ],
                 cloud_services: vec![],
-            }
+            },
         };
 
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Duplicate plugin ID"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Duplicate plugin ID"));
     }
 
     #[test]
@@ -547,6 +559,9 @@ mod tests {
     fn test_missing_env_var() {
         let result = resolve_env_var("${NONEXISTENT_VAR_12345}");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Environment variable not found"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Environment variable not found"));
     }
 }

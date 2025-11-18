@@ -112,60 +112,34 @@
 //! - Concurrent plugin operations: Supported via Arc<RwLock<>>
 //! - Memory overhead: ~1KB per plugin (excluding tool schemas)
 
+pub mod client; // Phase 2: High-level MCP client
 pub mod config;
 pub mod error;
+pub mod extensions;
 pub mod manager;
-pub mod plugin;
-pub mod transport;  // Phase 2: Transport layer (stdio, HTTP)
-pub mod protocol;   // Phase 2: MCP protocol types
-pub mod stdio;      // Phase 2: stdio transport implementation
-pub mod client;     // Phase 2: High-level MCP client
 pub mod marketplace; // Marketplace API client for MCP Registry
-pub mod extensions;  // Extension system for downloadable MCP services
+pub mod plugin;
+pub mod protocol; // Phase 2: MCP protocol types
+pub mod stdio; // Phase 2: stdio transport implementation
+pub mod transport; // Phase 2: Transport layer (stdio, HTTP) // Extension system for downloadable MCP services
 
 // Re-export commonly used types for convenience
 pub use config::{
-    McpConfig,
-    McpPlugins,
-    LocalServerConfig,
-    CloudServiceConfig,
-    AuthConfig,
-    resolve_env_var,
+    resolve_env_var, AuthConfig, CloudServiceConfig, LocalServerConfig, McpConfig, McpPlugins,
 };
 
 pub use plugin::{
-    PluginMetadata,
-    PluginState,
-    PluginType,
-    ToolInfo,
-    ResourceInfo,
-    PromptInfo,
-    PromptArgument,
+    PluginMetadata, PluginState, PluginType, PromptArgument, PromptInfo, ResourceInfo, ToolInfo,
 };
 
-pub use manager::{
-    McpPluginManager,
-    PluginInfo,
-};
+pub use manager::{McpPluginManager, PluginInfo};
 
-pub use error::{
-    McpError,
-    Result,
-};
+pub use error::{McpError, Result};
 
-pub use transport::{
-    McpTransport,
-    JsonRpcRequest,
-    JsonRpcResponse,
-    RequestId,
-};
+pub use transport::{JsonRpcRequest, JsonRpcResponse, McpTransport, RequestId};
 
 pub use protocol::{
-    InitializeParams,
-    InitializeResult,
-    McpToolDefinition,
-    ToolCallParams,
-    ToolCallResult,
+    InitializeParams, InitializeResult, McpToolDefinition, ToolCallParams, ToolCallResult,
 };
 
 pub use stdio::StdioTransport;

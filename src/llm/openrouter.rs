@@ -61,8 +61,8 @@ impl LlmAdapter for OpenRouterAdapter {
         // OpenRouter expects plugins array: [{"id": "web", "max_results": 5}]
         let plugins = if request.web_search == Some(true) {
             Some(vec![WebPlugin {
-                id: "web".to_string(),  // Required value for web search
-                max_results: Some(5),   // Default is 5 results per search
+                id: "web".to_string(), // Required value for web search
+                max_results: Some(5),  // Default is 5 results per search
             }])
         } else {
             None
@@ -74,15 +74,22 @@ impl LlmAdapter for OpenRouterAdapter {
             stream: true,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
-            tools: request.tools,  // Pass custom tools from request
-            tool_choice: request.tool_choice,  // Pass tool_choice from request
+            tools: request.tools,             // Pass custom tools from request
+            tool_choice: request.tool_choice, // Pass tool_choice from request
             plugins,
-            provider: None,  // Not using provider-specific config anymore
+            provider: None, // Not using provider-specific config anymore
         };
 
         // DEBUG: Log the serialized request to see what's actually being sent
-        tracing::debug!("🔍 [API] Sending request to model: {} (is_anthropic: {})", api_request.model, is_anthropic);
-        tracing::debug!("🔍 [API] Sending request with {} messages", api_request.messages.len());
+        tracing::debug!(
+            "🔍 [API] Sending request to model: {} (is_anthropic: {})",
+            api_request.model,
+            is_anthropic
+        );
+        tracing::debug!(
+            "🔍 [API] Sending request with {} messages",
+            api_request.messages.len()
+        );
         for (idx, msg) in api_request.messages.iter().enumerate() {
             if let Ok(json) = serde_json::to_string(msg) {
                 tracing::debug!("🔍 [API] Message[{}]: {}", idx, json);
@@ -92,9 +99,15 @@ impl LlmAdapter for OpenRouterAdapter {
             tracing::debug!("🔍 [API] Full request JSON:\n{}", json);
         }
 
-        tracing::debug!("⏱️  [LLM] Sending stream request at {:?}", start_time.elapsed());
+        tracing::debug!(
+            "⏱️  [LLM] Sending stream request at {:?}",
+            start_time.elapsed()
+        );
         let response = self.send_request(&api_request).await?;
-        tracing::debug!("⏱️  [LLM] Stream response headers received at {:?}", start_time.elapsed());
+        tracing::debug!(
+            "⏱️  [LLM] Stream response headers received at {:?}",
+            start_time.elapsed()
+        );
 
         if !response.status().is_success() {
             let status = response.status();
@@ -108,7 +121,10 @@ impl LlmAdapter for OpenRouterAdapter {
 
         while let Some(chunk) = stream.next().await {
             if first_chunk {
-                tracing::debug!("⏱️  [LLM] First chunk received at {:?}", start_time.elapsed());
+                tracing::debug!(
+                    "⏱️  [LLM] First chunk received at {:?}",
+                    start_time.elapsed()
+                );
                 first_chunk = false;
             }
             let chunk = chunk.context("Failed to read chunk from stream")?;
@@ -187,8 +203,8 @@ impl LlmAdapter for OpenRouterAdapter {
         // OpenRouter expects plugins array: [{"id": "web", "max_results": 5}]
         let plugins = if request.web_search == Some(true) {
             Some(vec![WebPlugin {
-                id: "web".to_string(),  // Required value for web search
-                max_results: Some(5),   // Default is 5 results per search
+                id: "web".to_string(), // Required value for web search
+                max_results: Some(5),  // Default is 5 results per search
             }])
         } else {
             None
@@ -200,10 +216,10 @@ impl LlmAdapter for OpenRouterAdapter {
             stream: false,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
-            tools: request.tools,  // Pass custom tools from request
-            tool_choice: request.tool_choice,  // Pass tool_choice from request
+            tools: request.tools,             // Pass custom tools from request
+            tool_choice: request.tool_choice, // Pass tool_choice from request
             plugins,
-            provider: None,  // Not using provider-specific config anymore
+            provider: None, // Not using provider-specific config anymore
         };
 
         // Log detailed tool information for debugging
@@ -239,12 +255,11 @@ impl LlmAdapter for OpenRouterAdapter {
         tracing::debug!("OpenRouter raw response: {}", response_text);
 
         // Deserialize with detailed error reporting
-        let completion: CompletionResponse = serde_json::from_str(&response_text)
-            .map_err(|e| {
-                tracing::error!("Failed to deserialize OpenRouter response: {}", e);
-                tracing::error!("Raw response was: {}", response_text);
-                anyhow::anyhow!("error decoding response body: {}", e)
-            })?;
+        let completion: CompletionResponse = serde_json::from_str(&response_text).map_err(|e| {
+            tracing::error!("Failed to deserialize OpenRouter response: {}", e);
+            tracing::error!("Raw response was: {}", response_text);
+            anyhow::anyhow!("error decoding response body: {}", e)
+        })?;
 
         let choice = completion
             .choices
@@ -257,7 +272,11 @@ impl LlmAdapter for OpenRouterAdapter {
             calls
                 .iter()
                 .filter_map(|api_call| {
-                    tracing::info!("   - Tool call: {} (id: {})", api_call.function.name, api_call.id);
+                    tracing::info!(
+                        "   - Tool call: {} (id: {})",
+                        api_call.function.name,
+                        api_call.id
+                    );
                     // Parse the JSON arguments string into a Value
                     match serde_json::from_str(&api_call.function.arguments) {
                         Ok(args) => Some(ToolCall {
@@ -332,17 +351,19 @@ struct ApiRequest {
 /// - Assistant messages with tool calls: `tool_calls` array with type="function"
 /// - Tool result messages: role="tool" with `tool_call_id`
 fn serialize_messages_for_openai_value(messages: &[Message]) -> Result<Vec<serde_json::Value>> {
-    messages.iter().map(|msg| {
-        // Convert our internal Message format to OpenAI API format
-        let mut json = serde_json::json!({
-            "role": msg.role,
-            "content": msg.content,
-        });
+    messages
+        .iter()
+        .map(|msg| {
+            // Convert our internal Message format to OpenAI API format
+            let mut json = serde_json::json!({
+                "role": msg.role,
+                "content": msg.content,
+            });
 
-        // Add tool_calls if present (for assistant messages)
-        // OpenAI requires each tool call to have type="function"
-        if let Some(tool_calls) = &msg.tool_calls {
-            let openai_tool_calls: Vec<serde_json::Value> = tool_calls.iter().map(|tc| {
+            // Add tool_calls if present (for assistant messages)
+            // OpenAI requires each tool call to have type="function"
+            if let Some(tool_calls) = &msg.tool_calls {
+                let openai_tool_calls: Vec<serde_json::Value> = tool_calls.iter().map(|tc| {
                 serde_json::json!({
                     "id": tc.id,
                     "type": "function",
@@ -352,16 +373,17 @@ fn serialize_messages_for_openai_value(messages: &[Message]) -> Result<Vec<serde
                     }
                 })
             }).collect();
-            json["tool_calls"] = serde_json::Value::Array(openai_tool_calls);
-        }
+                json["tool_calls"] = serde_json::Value::Array(openai_tool_calls);
+            }
 
-        // Add tool_call_id if present (for tool result messages)
-        if let Some(tool_call_id) = &msg.tool_call_id {
-            json["tool_call_id"] = serde_json::Value::String(tool_call_id.clone());
-        }
+            // Add tool_call_id if present (for tool result messages)
+            if let Some(tool_call_id) = &msg.tool_call_id {
+                json["tool_call_id"] = serde_json::Value::String(tool_call_id.clone());
+            }
 
-        Ok(json)
-    }).collect()
+            Ok(json)
+        })
+        .collect()
 }
 
 /// Serialize messages for Anthropic models (Claude)
@@ -374,11 +396,17 @@ fn serialize_messages_for_anthropic_value(messages: &[Message]) -> Result<Vec<se
         let value = match message.role.as_str() {
             "tool" => {
                 // Tool result message - convert to Anthropic's format
-                let tool_use_id = message.tool_call_id.as_ref()
+                let tool_use_id = message
+                    .tool_call_id
+                    .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("tool message missing tool_call_id"))?;
 
                 if message.content.is_empty() {
-                    anyhow::bail!("Tool result message {} has empty content (tool_use_id: {})", idx, tool_use_id);
+                    anyhow::bail!(
+                        "Tool result message {} has empty content (tool_use_id: {})",
+                        idx,
+                        tool_use_id
+                    );
                 }
 
                 serde_json::json!({
@@ -415,7 +443,10 @@ fn serialize_messages_for_anthropic_value(messages: &[Message]) -> Result<Vec<se
                 }
 
                 if content_blocks.is_empty() {
-                    anyhow::bail!("Assistant message {} with tool_calls generated no content blocks", idx);
+                    anyhow::bail!(
+                        "Assistant message {} with tool_calls generated no content blocks",
+                        idx
+                    );
                 }
 
                 serde_json::json!({
@@ -488,7 +519,11 @@ where
     for (idx, message) in messages.iter().enumerate() {
         // Validate: Anthropic requires all messages (except final assistant) to have non-empty content
         if message.content.is_empty() && message.role != "tool" && message.tool_calls.is_none() {
-            tracing::warn!("⚠️  Message {} has empty content (role: {})", idx, message.role);
+            tracing::warn!(
+                "⚠️  Message {} has empty content (role: {})",
+                idx,
+                message.role
+            );
         }
 
         // Convert each message to Anthropic format
@@ -510,16 +545,25 @@ where
                     content: String,
                 }
 
-                let tool_use_id = message.tool_call_id.as_ref()
-                    .ok_or_else(|| serde::ser::Error::custom("tool message missing tool_call_id"))?;
+                let tool_use_id = message.tool_call_id.as_ref().ok_or_else(|| {
+                    serde::ser::Error::custom("tool message missing tool_call_id")
+                })?;
 
                 // DEBUG: Log tool result content
-                tracing::debug!("Tool result message {}: tool_use_id={}, content_len={}",
-                    idx, tool_use_id, message.content.len());
+                tracing::debug!(
+                    "Tool result message {}: tool_use_id={}, content_len={}",
+                    idx,
+                    tool_use_id,
+                    message.content.len()
+                );
 
                 // CRITICAL: Anthropic requires tool_result content to be non-empty
                 if message.content.is_empty() {
-                    tracing::error!("❌ Tool result message {} has EMPTY content! tool_use_id={}", idx, tool_use_id);
+                    tracing::error!(
+                        "❌ Tool result message {} has EMPTY content! tool_use_id={}",
+                        idx,
+                        tool_use_id
+                    );
                     return Err(serde::ser::Error::custom(format!(
                         "Tool result message {} has empty content (tool_use_id: {})",
                         idx, tool_use_id
@@ -527,13 +571,14 @@ where
                 }
 
                 serde_json::to_value(ToolResultMessage {
-                    role: "user",  // Anthropic requires tool results to have role "user"
+                    role: "user", // Anthropic requires tool results to have role "user"
                     content: vec![ToolResultBlock {
                         block_type: "tool_result".to_string(),
                         tool_use_id: tool_use_id.clone(),
                         content: message.content.clone(),
                     }],
-                }).map_err(serde::ser::Error::custom)?
+                })
+                .map_err(serde::ser::Error::custom)?
             }
             "assistant" if message.tool_calls.is_some() => {
                 // Assistant message with tool calls - convert to Anthropic's tool_use blocks
@@ -631,7 +676,11 @@ where
                 // User, system, or other messages - simple string content
                 // CRITICAL: Anthropic requires non-empty content
                 if message.content.is_empty() {
-                    tracing::error!("❌ Message {} (role: {}) has EMPTY content!", idx, message.role);
+                    tracing::error!(
+                        "❌ Message {} (role: {}) has EMPTY content!",
+                        idx,
+                        message.role
+                    );
                     return Err(serde::ser::Error::custom(format!(
                         "Message {} (role: {}) has empty content - Anthropic requires non-empty content",
                         idx, message.role
@@ -646,8 +695,14 @@ where
         };
 
         // DEBUG: Log serialized message to diagnose empty content errors
-        if idx <= 5 {  // Only log first 6 messages to avoid spam
-            tracing::debug!("  Serialized message[{}]: {}", idx, serde_json::to_string_pretty(&anthropic_msg).unwrap_or_else(|_| "<failed to serialize>".to_string()));
+        if idx <= 5 {
+            // Only log first 6 messages to avoid spam
+            tracing::debug!(
+                "  Serialized message[{}]: {}",
+                idx,
+                serde_json::to_string_pretty(&anthropic_msg)
+                    .unwrap_or_else(|_| "<failed to serialize>".to_string())
+            );
         }
 
         seq.serialize_element(&anthropic_msg)?;
@@ -660,9 +715,9 @@ where
 /// OpenRouter uses a plugins array format: [{"id": "web", "max_results": 5}]
 #[derive(Debug, Serialize)]
 struct WebPlugin {
-    id: String,  // Must be "web" for web search
+    id: String, // Must be "web" for web search
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_results: Option<u32>,  // default is 5
+    max_results: Option<u32>, // default is 5
 }
 
 #[derive(Debug, Serialize)]
@@ -765,10 +820,7 @@ mod tests {
         ));
 
         // Message 3: Tool result (should have role "user" with tool_result block)
-        messages.push(Message::tool_result(
-            tool_id.to_string(),
-            "4".to_string(),
-        ));
+        messages.push(Message::tool_result(tool_id.to_string(), "4".to_string()));
 
         // Serialize messages to Anthropic format
         let messages_json = serialize_messages_for_anthropic_value(&messages).unwrap();
@@ -798,19 +850,29 @@ mod tests {
         // Message 1: Assistant with tool_use block
         assert_eq!(msgs[1]["role"], "assistant");
         let content = msgs[1]["content"].as_array().unwrap();
-        let tool_use_block = content.iter()
+        let tool_use_block = content
+            .iter()
             .find(|b| b["type"] == "tool_use")
             .expect("Should have tool_use block");
         assert_eq!(tool_use_block["id"], tool_id);
 
         // Message 2: User with tool_result block (NOT role "tool")
-        assert_eq!(msgs[2]["role"], "user", "Tool results must have role 'user' for Anthropic");
+        assert_eq!(
+            msgs[2]["role"], "user",
+            "Tool results must have role 'user' for Anthropic"
+        );
         let result_content = msgs[2]["content"].as_array().unwrap();
         assert_eq!(result_content[0]["type"], "tool_result");
-        assert_eq!(result_content[0]["tool_use_id"], tool_id, "tool_use_id must match the id from tool_use block");
+        assert_eq!(
+            result_content[0]["tool_use_id"], tool_id,
+            "tool_use_id must match the id from tool_use block"
+        );
 
         // CRITICAL: Verify that content is not empty!
-        assert_eq!(result_content[0]["content"], "4", "Tool result content must not be empty!");
+        assert_eq!(
+            result_content[0]["content"], "4",
+            "Tool result content must not be empty!"
+        );
     }
 
     #[test]
@@ -873,11 +935,17 @@ mod tests {
 
         // Text block
         assert_eq!(assistant_content[0]["type"], "text");
-        assert_eq!(assistant_content[0]["text"], "I'll check the weather for you.");
+        assert_eq!(
+            assistant_content[0]["text"],
+            "I'll check the weather for you."
+        );
 
         // Tool use block
         assert_eq!(assistant_content[1]["type"], "tool_use");
-        assert_eq!(assistant_content[1]["id"], "toolu_vrtx_011f4dtw2pHcnc92YobnXXeN");
+        assert_eq!(
+            assistant_content[1]["id"],
+            "toolu_vrtx_011f4dtw2pHcnc92YobnXXeN"
+        );
         assert_eq!(assistant_content[1]["name"], "get_weather");
         assert_eq!(assistant_content[1]["input"]["location"], "NYC");
 
@@ -888,8 +956,14 @@ mod tests {
 
         // Tool result block
         assert_eq!(tool_result_content[0]["type"], "tool_result");
-        assert_eq!(tool_result_content[0]["tool_use_id"], "toolu_vrtx_011f4dtw2pHcnc92YobnXXeN");
-        assert_eq!(tool_result_content[0]["content"], "Weather in NYC: 72°F, sunny");
+        assert_eq!(
+            tool_result_content[0]["tool_use_id"],
+            "toolu_vrtx_011f4dtw2pHcnc92YobnXXeN"
+        );
+        assert_eq!(
+            tool_result_content[0]["content"],
+            "Weather in NYC: 72°F, sunny"
+        );
     }
 
     #[test]
@@ -997,16 +1071,16 @@ mod tests {
         let tool_calls = choice.message.tool_calls.as_ref().map(|calls| {
             calls
                 .iter()
-                .filter_map(|api_call| {
-                    match serde_json::from_str(&api_call.function.arguments) {
+                .filter_map(
+                    |api_call| match serde_json::from_str(&api_call.function.arguments) {
                         Ok(args) => Some(ToolCall {
                             id: api_call.id.clone(),
                             name: api_call.function.name.clone(),
                             arguments: args,
                         }),
                         Err(_) => None,
-                    }
-                })
+                    },
+                )
                 .collect::<Vec<_>>()
         });
 
@@ -1044,7 +1118,7 @@ mod tests {
         // Tool result with EMPTY content - this should be rejected!
         messages.push(Message::tool_result(
             "tool_123".to_string(),
-            String::new(),  // ← Empty content!
+            String::new(), // ← Empty content!
         ));
 
         // Serialization should fail when converting to Anthropic format
@@ -1065,10 +1139,16 @@ mod tests {
             }
         } else {
             // If serialization failed (as expected), test passes
-            assert!(result.is_err(), "Empty tool result should be rejected during serialization");
+            assert!(
+                result.is_err(),
+                "Empty tool result should be rejected during serialization"
+            );
             let error_msg = result.unwrap_err().to_string();
-            assert!(error_msg.contains("empty content"),
-                "Error should mention empty content, got: {}", error_msg);
+            assert!(
+                error_msg.contains("empty content"),
+                "Error should mention empty content, got: {}",
+                error_msg
+            );
             return;
         };
 
@@ -1077,8 +1157,11 @@ mod tests {
         assert!(result.is_err(), "Empty tool result should be rejected");
 
         let error_msg = result.unwrap_err().to_string();
-        assert!(error_msg.contains("empty content"),
-            "Error should mention empty content, got: {}", error_msg);
+        assert!(
+            error_msg.contains("empty content"),
+            "Error should mention empty content, got: {}",
+            error_msg
+        );
     }
 
     #[test]
@@ -1086,7 +1169,7 @@ mod tests {
         // This test verifies that empty regular messages are caught
         let mut messages = Vec::new();
 
-        messages.push(Message::new("user", ""));  // ← Empty user message!
+        messages.push(Message::new("user", "")); // ← Empty user message!
 
         // Serialization should fail when converting to Anthropic format
         let result = serialize_messages_for_anthropic_value(&messages);
@@ -1106,10 +1189,16 @@ mod tests {
             }
         } else {
             // If serialization failed (as expected), test passes
-            assert!(result.is_err(), "Empty message should be rejected during serialization");
+            assert!(
+                result.is_err(),
+                "Empty message should be rejected during serialization"
+            );
             let error_msg = result.unwrap_err().to_string();
-            assert!(error_msg.contains("empty content"),
-                "Error should mention empty content, got: {}", error_msg);
+            assert!(
+                error_msg.contains("empty content"),
+                "Error should mention empty content, got: {}",
+                error_msg
+            );
             return;
         };
 
@@ -1118,8 +1207,11 @@ mod tests {
         assert!(result.is_err(), "Empty message should be rejected");
 
         let error_msg = result.unwrap_err().to_string();
-        assert!(error_msg.contains("empty content"),
-            "Error should mention empty content, got: {}", error_msg);
+        assert!(
+            error_msg.contains("empty content"),
+            "Error should mention empty content, got: {}",
+            error_msg
+        );
     }
 
     #[test]
