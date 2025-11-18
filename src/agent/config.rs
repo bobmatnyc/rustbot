@@ -329,7 +329,10 @@ impl JsonAgentConfig {
         // Set mcpConfigFile field
         let config_filename = format!("{}_mcp.json", agent_id);
         if let Some(obj) = json.as_object_mut() {
-            obj.insert("mcpConfigFile".to_string(), serde_json::json!(config_filename));
+            obj.insert(
+                "mcpConfigFile".to_string(),
+                serde_json::json!(config_filename),
+            );
         } else {
             anyhow::bail!("Agent config is not a JSON object");
         }

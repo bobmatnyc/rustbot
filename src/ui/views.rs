@@ -564,6 +564,12 @@ impl crate::RustbotApp {
             self.render_extension_config_dialog(ui, ext_id);
             return; // Show only the dialog when configuring
         }
+
+        // Show uninstall confirmation dialog if present
+        if let Some((ext_id, ext_name)) = &self.uninstall_confirmation.clone() {
+            self.render_uninstall_confirmation_dialog(ui, ext_id, ext_name);
+            return; // Show only the dialog when confirming
+        }
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
@@ -781,8 +787,8 @@ impl crate::RustbotApp {
                                             )
                                             .clicked()
                                         {
-                                            // TODO: Implement uninstall functionality
-                                            tracing::info!("Uninstall extension: {}", ext.id);
+                                            // Show confirmation dialog
+                                            self.uninstall_confirmation = Some((ext.id.clone(), ext.name.clone()));
                                         }
                                     });
 
@@ -947,6 +953,192 @@ impl crate::RustbotApp {
                     );
                 }
             });
+    }
+
+    /// Render uninstall confirmation dialog
+    fn render_uninstall_confirmation_dialog(
+        &mut self,
+        ui: &mut egui::Ui,
+        ext_id: &str,
+        ext_name: &str,
+    ) {
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.add_space(20.0);
+                ui.heading(format!("{} Uninstall Extension", icons::WARNING));
+                ui.add_space(20.0);
+
+                // Show uninstall message if any
+                if let Some((message, is_error)) = &self.uninstall_message {
+                    let color = if *is_error {
+                        egui::Color32::from_rgb(200, 80, 80)
+                    } else {
+                        egui::Color32::from_rgb(60, 150, 60)
+                    };
+                    ui.label(egui::RichText::new(message).size(14.0).color(color));
+                    ui.add_space(15.0);
+
+                    // If successful uninstall, show back button
+                    if !is_error {
+                        if ui
+                            .button(format!("{} Back to Extensions", icons::ARROW_LEFT))
+                            .clicked()
+                        {
+                            self.uninstall_confirmation = None;
+                            self.uninstall_message = None;
+                        }
+                        return;
+                    }
+                }
+
+                // Warning box
+                ui.group(|ui| {
+                    ui.set_min_width(ui.available_width());
+                    ui.add_space(10.0);
+
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} Warning: This action cannot be undone",
+                            icons::WARNING
+                        ))
+                        .size(16.0)
+                        .strong()
+                        .color(egui::Color32::from_rgb(200, 120, 40)),
+                    );
+
+                    ui.add_space(10.0);
+
+                    ui.label(
+                        egui::RichText::new(format!("Extension: {}", ext_name))
+                            .size(14.0)
+                            .strong(),
+                    );
+                    ui.label(egui::RichText::new(format!("ID: {}", ext_id)).size(12.0));
+
+                    ui.add_space(10.0);
+
+                    ui.label("This will:");
+                    ui.label("  • Remove the extension from your system");
+                    ui.label("  • Remove it from all agent configurations");
+                    ui.label("  • Remove MCP configuration entries");
+
+                    ui.add_space(10.0);
+                });
+
+                ui.add_space(20.0);
+
+                // Action buttons
+                ui.horizontal(|ui| {
+                    if ui.button(format!("{} Cancel", icons::X)).clicked() {
+                        self.uninstall_confirmation = None;
+                        self.uninstall_message = None;
+                    }
+
+                    ui.add_space(10.0);
+
+                    if ui
+                        .button(
+                            egui::RichText::new(format!("{} Uninstall", icons::TRASH))
+                                .color(egui::Color32::from_rgb(180, 60, 60)),
+                        )
+                        .clicked()
+                    {
+                        // Perform uninstall
+                        match self.perform_uninstall(ext_id) {
+                            Ok(()) => {
+                                self.uninstall_message = Some((
+                                    format!("✓ Extension '{}' uninstalled successfully", ext_name),
+                                    false,
+                                ));
+                            }
+                            Err(e) => {
+                                self.uninstall_message =
+                                    Some((format!("✗ Failed to uninstall extension: {}", e), true));
+                            }
+                        }
+                    }
+                });
+            });
+    }
+
+    /// Perform extension uninstall
+    ///
+    /// Removes the extension from:
+    /// 1. Extension registry (~/.rustbot/extensions/registry.json)
+    /// 2. Global MCP config (~/.rustbot/mcp_config.json) if present
+    /// 3. All agent-specific MCP configs (~/.rustbot/mcp_configs/*.json)
+    /// 4. All agent presets (agents/presets/*.json) mcp_extensions field
+    fn perform_uninstall(&mut self, extension_id: &str) -> anyhow::Result<()> {
+        use crate::mcp::extensions::ExtensionRegistry;
+        use std::path::PathBuf;
+
+        let home_dir = dirs::home_dir()
+            .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+
+        // 1. Remove from extension registry
+        let registry_path = home_dir
+            .join(".rustbot")
+            .join("extensions")
+            .join("registry.json");
+
+        let mut registry = ExtensionRegistry::load(&registry_path)?;
+        if registry.uninstall(extension_id).is_none() {
+            return Err(anyhow::anyhow!(
+                "Extension '{}' not found in registry",
+                extension_id
+            ));
+        }
+        registry.save(&registry_path)?;
+        tracing::info!("✓ Removed extension '{}' from registry", extension_id);
+
+        // 2. Remove from global MCP config if it exists
+        let global_config_path = home_dir.join(".rustbot").join("mcp_config.json");
+        if global_config_path.exists() {
+            use crate::mcp::config::McpConfig;
+            let mut config = McpConfig::load_from_file(&global_config_path)?;
+            if config.remove_extension(extension_id) {
+                config.save_to_file(&global_config_path)?;
+                tracing::info!("✓ Removed extension from global MCP config");
+            }
+        }
+
+        // 3. Remove from all agent-specific MCP configs
+        let mcp_configs_dir = home_dir.join(".rustbot").join("mcp_configs");
+        if mcp_configs_dir.exists() {
+            use crate::mcp::config::McpConfig;
+            for entry in std::fs::read_dir(&mcp_configs_dir)? {
+                let path = entry?.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                    let mut config = McpConfig::load_from_file(&path)?;
+                    if config.remove_extension(extension_id) {
+                        config.save_to_file(&path)?;
+                        tracing::info!("✓ Removed extension from {:?}", path.file_name());
+                    }
+                }
+            }
+        }
+
+        // 4. Remove from all agent preset configs (agents/presets/*.json)
+        for agent_config in &mut self.agent_configs {
+            if agent_config
+                .mcp_extensions
+                .contains(&extension_id.to_string())
+            {
+                agent_config.mcp_extensions.retain(|id| id != extension_id);
+
+                // Save the updated agent config
+                let agent_path = PathBuf::from("agents")
+                    .join("presets")
+                    .join(format!("{}.json", agent_config.name));
+
+                let json = serde_json::to_string_pretty(&agent_config)?;
+                std::fs::write(&agent_path, json)?;
+                tracing::info!("✓ Removed extension from agent '{}'", agent_config.name);
+            }
+        }
+
+        Ok(())
     }
 
     /// Render the agents management view

@@ -193,6 +193,10 @@ struct RustbotApp {
     extension_config_message: Option<(String, bool)>, // (message, is_error)
     installed_extensions_filter: ui::InstallTypeFilter, // Filter for installed extensions view
 
+    // Extension uninstall state
+    uninstall_confirmation: Option<(String, String)>, // (extension_id, extension_name)
+    uninstall_message: Option<(String, bool)>,        // (message, is_error)
+
     // Markdown rendering
     markdown_cache: CommonMarkCache,
 
@@ -318,6 +322,8 @@ impl RustbotApp {
             configuring_extension_id: None,
             extension_config_message: None,
             installed_extensions_filter: ui::InstallTypeFilter::default(),
+            uninstall_confirmation: None,
+            uninstall_message: None,
             markdown_cache: CommonMarkCache::default(),
             mermaid_renderer,
         }
