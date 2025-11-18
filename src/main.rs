@@ -188,6 +188,10 @@ struct RustbotApp {
     extensions_marketplace_view: Option<ui::MarketplaceView>,
     extensions_view: ExtensionsView,
 
+    // Extension configuration state
+    configuring_extension_id: Option<String>,
+    extension_config_message: Option<(String, bool)>, // (message, is_error)
+
     // Markdown rendering
     markdown_cache: CommonMarkCache,
 
@@ -310,6 +314,8 @@ impl RustbotApp {
             plugins_view,
             extensions_marketplace_view,
             extensions_view: ExtensionsView::default(),
+            configuring_extension_id: None,
+            extension_config_message: None,
             markdown_cache: CommonMarkCache::default(),
             mermaid_renderer,
         }
@@ -972,6 +978,11 @@ impl eframe::App for RustbotApp {
 
         // Handle keyboard shortcuts
         ctx.input(|i| {
+            // Cmd+Q (macOS) or Ctrl+Q (Windows/Linux) to quit application
+            if i.modifiers.command && i.key_pressed(egui::Key::Q) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+
             // Cmd+R (macOS) or Ctrl+R (Windows/Linux) to reload configuration
             if i.modifiers.command && i.key_pressed(egui::Key::R) {
                 self.reload_config();

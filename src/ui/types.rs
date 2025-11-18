@@ -27,10 +27,11 @@ pub enum SettingsView {
     Agents,
 }
 
-/// Extensions sub-view (Marketplace, Remote, Local)
+/// Extensions sub-view (Marketplace, Installed, Remote, Local)
 #[derive(PartialEq, Clone)]
 pub enum ExtensionsView {
     Marketplace, // Browse available MCP servers
+    Installed,   // View and manage installed extensions
     Remote,      // Manage remote/cloud services
     Local,       // View locally installed plugins
 }

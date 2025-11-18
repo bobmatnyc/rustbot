@@ -529,6 +529,18 @@ impl crate::RustbotApp {
 
             if ui
                 .selectable_label(
+                    self.extensions_view == ExtensionsView::Installed,
+                    format!("{} Installed", icons::PACKAGE),
+                )
+                .clicked()
+            {
+                self.extensions_view = ExtensionsView::Installed;
+            }
+
+            ui.add_space(10.0);
+
+            if ui
+                .selectable_label(
                     self.extensions_view == ExtensionsView::Remote,
                     format!("{} Remote", icons::GLOBE),
                 )
@@ -556,6 +568,9 @@ impl crate::RustbotApp {
             ExtensionsView::Marketplace => {
                 // Reuse existing marketplace view
                 self.render_marketplace_view(ui, ctx);
+            }
+            ExtensionsView::Installed => {
+                self.render_installed_extensions(ui);
             }
             ExtensionsView::Remote => {
                 self.render_remote_extensions(ui);
@@ -608,6 +623,316 @@ impl crate::RustbotApp {
                         ui.add_space(10.0);
                     });
                 });
+            });
+    }
+
+    /// Render installed extensions view (shows extensions from marketplace registry)
+    fn render_installed_extensions(&mut self, ui: &mut egui::Ui) {
+        // Check if we're showing a configuration dialog
+        if let Some(ext_id) = &self.configuring_extension_id.clone() {
+            self.render_extension_config_dialog(ui, ext_id);
+            return; // Show only the dialog when configuring
+        }
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.add_space(20.0);
+                ui.heading("Installed Extensions");
+                ui.add_space(10.0);
+
+                // Load extension registry
+                use crate::mcp::extensions::ExtensionRegistry;
+                use std::path::PathBuf;
+
+                let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+                let registry_path = home_dir
+                    .join(".rustbot")
+                    .join("extensions")
+                    .join("registry.json");
+
+                match ExtensionRegistry::load(&registry_path) {
+                    Ok(registry) => {
+                        let extensions = registry.list();
+                        if extensions.is_empty() {
+                            ui.vertical_centered(|ui| {
+                                ui.add_space(40.0);
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "{} No extensions installed",
+                                        icons::PACKAGE
+                                    ))
+                                    .size(16.0)
+                                    .color(egui::Color32::from_rgb(120, 120, 120)),
+                                );
+                                ui.add_space(10.0);
+                                ui.label(
+                                    egui::RichText::new(
+                                        "Visit the Marketplace to discover and install MCP servers",
+                                    )
+                                    .size(12.0)
+                                    .color(egui::Color32::from_rgb(150, 150, 150)),
+                                );
+                            });
+                        } else {
+                            ui.label(
+                                egui::RichText::new(format!("{} installed extension(s)", extensions.len()))
+                                    .size(12.0)
+                                    .color(egui::Color32::from_rgb(120, 120, 120)),
+                            );
+                            ui.add_space(10.0);
+
+                            // Display each installed extension
+                            for ext in extensions {
+                                ui.group(|ui| {
+                                    ui.set_min_width(ui.available_width());
+                                    ui.add_space(5.0);
+
+                                    // Extension header
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(&ext.name)
+                                                .size(16.0)
+                                                .strong()
+                                                .color(egui::Color32::from_rgb(60, 120, 180)),
+                                        );
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            ui.label(
+                                                egui::RichText::new(format!(
+                                                    "{} v{}",
+                                                    icons::TAG,
+                                                    ext.metadata.version
+                                                ))
+                                                .size(11.0)
+                                                .color(egui::Color32::from_rgb(120, 120, 120)),
+                                            );
+                                        });
+                                    });
+
+                                    ui.add_space(5.0);
+
+                                    // Description
+                                    if !ext.description.is_empty() {
+                                        ui.label(
+                                            egui::RichText::new(&ext.description)
+                                                .size(12.0)
+                                                .color(egui::Color32::from_rgb(100, 100, 100)),
+                                        );
+                                        ui.add_space(5.0);
+                                    }
+
+                                    // Installation details
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "{} {}",
+                                                icons::DOWNLOAD_SIMPLE,
+                                                match ext.install_type {
+                                                    crate::mcp::extensions::InstallationType::Local => "Local",
+                                                    crate::mcp::extensions::InstallationType::Remote => "Remote",
+                                                }
+                                            ))
+                                            .size(11.0)
+                                            .color(egui::Color32::from_rgb(120, 120, 120)),
+                                        );
+
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "{} Installed: {}",
+                                                icons::CALENDAR,
+                                                ext.metadata.installed_at.split('T').next().unwrap_or("Unknown")
+                                            ))
+                                            .size(11.0)
+                                            .color(egui::Color32::from_rgb(120, 120, 120)),
+                                        );
+                                    });
+
+                                    ui.add_space(5.0);
+
+                                    // Action buttons
+                                    ui.horizontal(|ui| {
+                                        if !ext.metadata.repository_url.is_empty() {
+                                            if ui.button(format!("{} Repository", icons::GITHUB_LOGO)).clicked() {
+                                                ui.output_mut(|o| o.copied_text = ext.metadata.repository_url.clone());
+                                                tracing::info!("Repository URL copied to clipboard: {}", ext.metadata.repository_url);
+                                            }
+                                        }
+
+                                        if ui.button(format!("{} Configure", icons::GEAR)).clicked() {
+                                            self.configuring_extension_id = Some(ext.id.clone());
+                                        }
+
+                                        if ui
+                                            .button(
+                                                egui::RichText::new(format!("{} Uninstall", icons::TRASH))
+                                                    .color(egui::Color32::from_rgb(180, 60, 60)),
+                                            )
+                                            .clicked()
+                                        {
+                                            // TODO: Implement uninstall functionality
+                                            tracing::info!("Uninstall extension: {}", ext.id);
+                                        }
+                                    });
+
+                                    ui.add_space(5.0);
+                                });
+
+                                ui.add_space(10.0);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(40.0);
+                            ui.label(
+                                egui::RichText::new(format!("{} Failed to load extensions", icons::WARNING))
+                                    .size(16.0)
+                                    .color(egui::Color32::from_rgb(200, 80, 80)),
+                            );
+                            ui.add_space(10.0);
+                            ui.label(
+                                egui::RichText::new(format!("Error: {}", e))
+                                    .size(12.0)
+                                    .color(egui::Color32::from_rgb(150, 150, 150)),
+                            );
+                        });
+                    }
+                }
+            });
+    }
+
+    /// Render extension configuration dialog
+    fn render_extension_config_dialog(&mut self, ui: &mut egui::Ui, ext_id: &str) {
+        use crate::mcp::extensions::ExtensionRegistry;
+        use std::path::PathBuf;
+
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.add_space(20.0);
+                ui.heading(format!("{} Configure Extension", icons::GEAR));
+                ui.add_space(10.0);
+
+                // Back button
+                if ui.button(format!("{} Back to Extensions", icons::ARROW_LEFT)).clicked() {
+                    self.configuring_extension_id = None;
+                    self.extension_config_message = None;
+                    return;
+                }
+
+                ui.add_space(15.0);
+
+                // Load extension info
+                let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+                let registry_path = home_dir.join(".rustbot").join("extensions").join("registry.json");
+
+                let extension = match ExtensionRegistry::load(&registry_path) {
+                    Ok(registry) => registry.get(ext_id).cloned(),
+                    Err(_) => None,
+                };
+
+                if let Some(ext) = extension {
+                    // Extension header
+                    ui.group(|ui| {
+                        ui.set_min_width(ui.available_width());
+                        ui.add_space(10.0);
+                        ui.label(egui::RichText::new(&ext.name).size(18.0).strong());
+                        ui.label(&ext.description);
+                        ui.add_space(10.0);
+                    });
+
+                    ui.add_space(15.0);
+
+                    // Show configuration message if any
+                    if let Some((message, is_error)) = &self.extension_config_message {
+                        let color = if *is_error {
+                            egui::Color32::from_rgb(200, 80, 80)
+                        } else {
+                            egui::Color32::from_rgb(60, 150, 60)
+                        };
+                        ui.label(egui::RichText::new(message).color(color));
+                        ui.add_space(10.0);
+                    }
+
+                    // Agent configuration section
+                    ui.label(egui::RichText::new("Enable for Agents:").size(16.0).strong());
+                    ui.add_space(10.0);
+
+                    // Iterate through agents and show checkboxes
+                    let mut changes_made = false;
+                    for (idx, agent_config) in self.agent_configs.iter_mut().enumerate() {
+                        let mut is_enabled = agent_config.mcp_extensions.contains(&ext.id);
+
+                        ui.horizontal(|ui| {
+                            if ui.checkbox(&mut is_enabled, "").changed() {
+                                if is_enabled {
+                                    // Add extension to agent
+                                    if !agent_config.mcp_extensions.contains(&ext.id) {
+                                        agent_config.mcp_extensions.push(ext.id.clone());
+                                        changes_made = true;
+                                    }
+                                } else {
+                                    // Remove extension from agent
+                                    agent_config.mcp_extensions.retain(|id| id != &ext.id);
+                                    changes_made = true;
+                                }
+                            }
+
+                            ui.label(egui::RichText::new(&agent_config.name).size(14.0));
+                        });
+
+                        ui.add_space(5.0);
+                    }
+
+                    // Save button
+                    ui.add_space(15.0);
+                    if ui.button(format!("{} Save Configuration", icons::FLOPPY_DISK)).clicked() {
+                        // Save all modified agent configs
+                        let mut save_errors = Vec::new();
+                        let mut saved_count = 0;
+
+                        for agent_config in &self.agent_configs {
+                            // Build path to agent JSON file
+                            let agent_path = PathBuf::from("agents")
+                                .join("presets")
+                                .join(format!("{}.json", agent_config.name));
+
+                            // Save the updated config
+                            match serde_json::to_string_pretty(&agent_config) {
+                                Ok(json) => {
+                                    if let Err(e) = std::fs::write(&agent_path, json) {
+                                        save_errors.push(format!("{}: {}", agent_config.name, e));
+                                    } else {
+                                        saved_count += 1;
+                                    }
+                                }
+                                Err(e) => {
+                                    save_errors.push(format!("{}: {}", agent_config.name, e));
+                                }
+                            }
+                        }
+
+                        if save_errors.is_empty() {
+                            self.extension_config_message = Some((
+                                format!("✓ Configuration saved! {} agent(s) updated. Tools will be available instantly.", saved_count),
+                                false,
+                            ));
+                            // Reload agent configs to pick up changes
+                            // This will trigger tool reload in the next update cycle
+                        } else {
+                            self.extension_config_message = Some((
+                                format!("✗ Failed to save some configs: {}", save_errors.join(", ")),
+                                true,
+                            ));
+                        }
+                    }
+
+                } else {
+                    ui.label(
+                        egui::RichText::new("Extension not found")
+                            .size(14.0)
+                            .color(egui::Color32::from_rgb(200, 80, 80)),
+                    );
+                }
             });
     }
 
