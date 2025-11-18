@@ -77,6 +77,15 @@ pub struct AgentConfig {
     /// and made available as tools for this agent.
     #[serde(default)]
     pub mcp_extensions: Vec<String>,
+
+    /// Per-agent MCP configuration file (optional)
+    ///
+    /// If specified, loads MCP tools from ~/.rustbot/mcp_configs/{mcp_config_file}
+    /// If not specified, uses global mcp_config.json for backward compatibility.
+    ///
+    /// Example: "assistant_mcp.json" loads from ~/.rustbot/mcp_configs/assistant_mcp.json
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_config_file: Option<String>,
 }
 
 impl AgentConfig {
@@ -92,6 +101,7 @@ impl AgentConfig {
             is_primary: false, // Default to specialist agent
             web_search_enabled: false,
             mcp_extensions: Vec::new(),
+            mcp_config_file: None,
         }
     }
 
@@ -107,6 +117,7 @@ impl AgentConfig {
             is_primary: true, // Assistant is the primary agent
             web_search_enabled: false,
             mcp_extensions: Vec::new(),
+            mcp_config_file: None,
         }
     }
 

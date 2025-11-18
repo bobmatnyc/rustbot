@@ -87,6 +87,16 @@ pub struct JsonAgentConfig {
     #[serde(rename = "mcpExtensions")]
     #[serde(default)]
     pub mcp_extensions: Vec<String>,
+
+    /// Per-agent MCP configuration file (optional)
+    ///
+    /// If specified, loads MCP tools from ~/.rustbot/mcp_configs/{mcp_config_file}
+    /// If not specified, uses global mcp_config.json for backward compatibility.
+    ///
+    /// Example: "assistant_mcp.json" loads from ~/.rustbot/mcp_configs/assistant_mcp.json
+    #[serde(rename = "mcpConfigFile")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_config_file: Option<String>,
 }
 
 fn default_version() -> String {
@@ -288,6 +298,56 @@ impl JsonAgentConfig {
 
         Ok(())
     }
+
+    /// Update agent config file to set mcpConfigFile field
+    ///
+    /// This is used to auto-fix agent configurations when enabling MCP tools.
+    /// It modifies the agent's JSON config file to include the mcpConfigFile field.
+    ///
+    /// # Arguments
+    /// * `path` - Path to the agent's JSON config file
+    /// * `agent_id` - Agent identifier (used to generate config filename)
+    ///
+    /// # Returns
+    /// Ok(()) if successfully updated, Err if file I/O or JSON parsing fails
+    ///
+    /// # Example
+    /// ```no_run
+    /// let path = Path::new("agents/presets/assistant.json");
+    /// JsonAgentConfig::set_mcp_config_file(path, "assistant")?;
+    /// // File now contains: "mcpConfigFile": "assistant_mcp.json"
+    /// ```
+    pub fn set_mcp_config_file(path: &Path, agent_id: &str) -> Result<()> {
+        // Read existing config
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read agent config from {:?}", path))?;
+
+        // Parse as JSON value for manipulation
+        let mut json: serde_json::Value = serde_json::from_str(&content)
+            .with_context(|| format!("Failed to parse agent config from {:?}", path))?;
+
+        // Set mcpConfigFile field
+        let config_filename = format!("{}_mcp.json", agent_id);
+        if let Some(obj) = json.as_object_mut() {
+            obj.insert("mcpConfigFile".to_string(), serde_json::json!(config_filename));
+        } else {
+            anyhow::bail!("Agent config is not a JSON object");
+        }
+
+        // Write back to file (pretty-printed)
+        let updated_content = serde_json::to_string_pretty(&json)
+            .with_context(|| "Failed to serialize updated config")?;
+        std::fs::write(path, updated_content)
+            .with_context(|| format!("Failed to write updated config to {:?}", path))?;
+
+        tracing::info!(
+            "Updated agent config at {:?} with mcpConfigFile: {}",
+            path,
+            config_filename
+        );
+
+        Ok(())
+    }
 }
 
 /// Resolve environment variable syntax in a string
@@ -454,6 +514,7 @@ mod tests {
             is_primary: false,
             metadata: None,
             mcp_extensions: Vec::new(),
+            mcp_config_file: None,
         };
 
         let result = config.validate();
@@ -488,6 +549,7 @@ mod tests {
             is_primary: false,
             metadata: None,
             mcp_extensions: Vec::new(),
+            mcp_config_file: None,
         };
 
         let result = config.validate();
@@ -515,6 +577,7 @@ mod tests {
             is_primary: false,
             metadata: None,
             mcp_extensions: Vec::new(),
+            mcp_config_file: None,
         };
 
         // Ollama doesn't require API key, validation should pass

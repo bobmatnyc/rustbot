@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::error::{McpError, Result};
+use super::extensions::McpConfigEntry;
 
 /// Top-level MCP plugin configuration
 ///
@@ -232,6 +233,90 @@ fn default_timeout() -> u64 {
 }
 
 impl McpConfig {
+    /// Get the MCP config path for a specific agent
+    ///
+    /// Returns the path to the agent-specific MCP configuration file:
+    /// `~/.rustbot/mcp_configs/{agent_id}_mcp.json`
+    ///
+    /// Creates the mcp_configs directory if it doesn't exist.
+    ///
+    /// # Arguments
+    /// * `agent_id` - Unique identifier for the agent
+    ///
+    /// # Returns
+    /// Ok(PathBuf) with the config path, or Err if HOME is not set or directory creation fails
+    ///
+    /// # Example
+    /// ```no_run
+    /// let path = McpConfig::agent_config_path("assistant")?;
+    /// // Returns: ~/.rustbot/mcp_configs/assistant_mcp.json
+    /// ```
+    pub fn agent_config_path(agent_id: &str) -> Result<PathBuf> {
+        let home_dir = std::env::var("HOME")
+            .map_err(|_| McpError::Config("HOME environment variable not set".to_string()))?;
+
+        let config_dir = PathBuf::from(home_dir).join(".rustbot").join("mcp_configs");
+
+        // Create directory if it doesn't exist
+        if !config_dir.exists() {
+            std::fs::create_dir_all(&config_dir)?;
+            tracing::info!("Created MCP configs directory: {:?}", config_dir);
+        }
+
+        Ok(config_dir.join(format!("{}_mcp.json", agent_id)))
+    }
+
+    /// Load or create agent-specific MCP config
+    ///
+    /// Loads the MCP configuration for a specific agent. If the config file
+    /// doesn't exist, creates an empty configuration with no plugins.
+    ///
+    /// This ensures the mcp_configs directory exists before attempting to
+    /// read or write configuration files.
+    ///
+    /// # Arguments
+    /// * `agent_id` - Unique identifier for the agent
+    ///
+    /// # Returns
+    /// Ok(McpConfig) with loaded or newly created config, or Err on I/O or parsing errors
+    ///
+    /// # Example
+    /// ```no_run
+    /// let config = McpConfig::load_or_create_for_agent("assistant")?;
+    /// ```
+    pub fn load_or_create_for_agent(agent_id: &str) -> Result<Self> {
+        let path = Self::agent_config_path(agent_id)?;
+
+        if path.exists() {
+            tracing::debug!("Loading agent MCP config from {:?}", path);
+            Self::load_from_file(&path)
+        } else {
+            tracing::info!(
+                "Creating new empty MCP config for agent '{}' at {:?}",
+                agent_id,
+                path
+            );
+
+            // Ensure parent directory exists (agent_config_path creates it but double-check)
+            if let Some(parent) = path.parent() {
+                if !parent.exists() {
+                    std::fs::create_dir_all(parent)?;
+                    tracing::info!("Created MCP configs directory: {:?}", parent);
+                }
+            }
+
+            // Create empty config for new agent
+            let config = McpConfig {
+                mcp_plugins: McpPlugins {
+                    local_servers: vec![],
+                    cloud_services: vec![],
+                },
+            };
+            config.save_to_file(&path)?;
+            Ok(config)
+        }
+    }
+
     /// Load configuration from a JSON file
     ///
     /// Error Conditions:
@@ -322,6 +407,74 @@ impl McpConfig {
         let json = serde_json::to_string_pretty(self)?;
         std::fs::write(path, json)?;
         Ok(())
+    }
+
+    /// Add an extension's MCP configuration to this config
+    ///
+    /// Adds the extension to the appropriate list (local_servers or cloud_services)
+    /// based on the McpConfigEntry type. If an extension with the same ID already
+    /// exists, it will be replaced.
+    ///
+    /// # Arguments
+    /// * `entry` - The MCP configuration entry from the installed extension
+    ///
+    /// # Returns
+    /// Ok(()) if successfully added, Err if validation fails
+    pub fn add_extension(&mut self, entry: McpConfigEntry) -> Result<()> {
+        match entry {
+            McpConfigEntry::LocalServer(server_config) => {
+                // Remove existing entry with same ID if present
+                self.mcp_plugins
+                    .local_servers
+                    .retain(|s| s.id != server_config.id);
+
+                // Add new entry
+                self.mcp_plugins.local_servers.push(server_config);
+            }
+            McpConfigEntry::CloudService(cloud_config) => {
+                // Remove existing entry with same ID if present
+                self.mcp_plugins
+                    .cloud_services
+                    .retain(|s| s.id != cloud_config.id);
+
+                // Add new entry
+                self.mcp_plugins.cloud_services.push(cloud_config);
+            }
+        }
+
+        // Validate after adding
+        self.validate()?;
+        Ok(())
+    }
+
+    /// Remove an extension from configuration by ID
+    ///
+    /// Searches both local_servers and cloud_services for the given ID
+    /// and removes it if found.
+    ///
+    /// # Arguments
+    /// * `extension_id` - The ID of the extension to remove
+    ///
+    /// # Returns
+    /// true if extension was found and removed, false if not found
+    pub fn remove_extension(&mut self, extension_id: &str) -> bool {
+        let local_removed = self
+            .mcp_plugins
+            .local_servers
+            .iter()
+            .position(|s| s.id == extension_id)
+            .map(|pos| self.mcp_plugins.local_servers.remove(pos))
+            .is_some();
+
+        let cloud_removed = self
+            .mcp_plugins
+            .cloud_services
+            .iter()
+            .position(|s| s.id == extension_id)
+            .map(|pos| self.mcp_plugins.cloud_services.remove(pos))
+            .is_some();
+
+        local_removed || cloud_removed
     }
 }
 

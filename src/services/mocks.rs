@@ -138,6 +138,7 @@ pub mod test_helpers {
                 is_primary: true,
                 web_search_enabled: false,
                 mcp_extensions: vec![],
+                mcp_config_file: None,
             },
             AgentConfig {
                 id: "agent2".to_string(),
@@ -149,6 +150,7 @@ pub mod test_helpers {
                 is_primary: false,
                 web_search_enabled: false,
                 mcp_extensions: vec![],
+                mcp_config_file: None,
             },
         ];
 
@@ -182,6 +184,7 @@ pub mod test_helpers {
             is_primary: false,
             web_search_enabled: false,
             mcp_extensions: vec![],
+            mcp_config_file: None,
         }
     }
 

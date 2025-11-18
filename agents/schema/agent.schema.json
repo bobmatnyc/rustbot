@@ -98,6 +98,15 @@
           "items": {"type": "string"}
         }
       }
+    },
+    "mcpExtensions": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of MCP extension IDs enabled for this agent"
+    },
+    "mcpConfigFile": {
+      "type": "string",
+      "description": "Optional agent-specific MCP config file (e.g., 'assistant_mcp.json'). If not specified, uses global mcp_config.json"
     }
   }
 }

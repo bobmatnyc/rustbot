@@ -330,10 +330,7 @@ fn test_docker_package_installation() -> Result<()> {
     match &extension.mcp_config {
         rustbot::mcp::extensions::McpConfigEntry::LocalServer(config) => {
             assert_eq!(config.command, "docker");
-            assert_eq!(
-                config.args,
-                vec!["run", "-i", "test/mcp-server:latest"]
-            );
+            assert_eq!(config.args, vec!["run", "-i", "test/mcp-server:latest"]);
         }
         _ => panic!("Expected LocalServer config"),
     }

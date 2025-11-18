@@ -44,7 +44,8 @@ use std::sync::Arc;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 
-use crate::mcp::extensions::{ExtensionInstaller, ExtensionRegistry};
+use crate::mcp::config::McpConfig;
+use crate::mcp::extensions::{ExtensionInstaller, ExtensionRegistry, InstalledExtension};
 use crate::mcp::marketplace::{MarketplaceClient, McpRegistry, McpServerWrapper};
 
 /// Async task result for server list fetch
@@ -116,8 +117,17 @@ pub struct MarketplaceView {
     /// Path to extension registry file
     registry_path: PathBuf,
 
+    /// Path to MCP configuration file
+    mcp_config_path: PathBuf,
+
     /// Installation status message
     install_message: Option<(String, bool)>, // (message, is_error)
+
+    /// Selected agent for installation (None = global config for all agents)
+    selected_agent: Option<String>,
+
+    /// Available agent configurations (loaded from agent loader)
+    agent_configs: Option<Vec<crate::agent::AgentConfig>>,
 }
 
 impl MarketplaceView {
@@ -134,14 +144,23 @@ impl MarketplaceView {
         let registry_path = extensions_dir.join("registry.json");
         let install_dir = extensions_dir.join("bin");
 
+        // MCP config path (use ~/.rustbot/ for consistency with registry)
+        let mcp_config_path = extensions_dir
+            .parent()
+            .unwrap_or(&home_dir)
+            .join("mcp_config.json");
+
         // Load or create extension registry
-        let extension_registry = ExtensionRegistry::load(&registry_path)
-            .unwrap_or_else(|e| {
-                tracing::warn!("Failed to load extension registry: {}. Creating new.", e);
-                ExtensionRegistry::new()
-            });
+        let extension_registry = ExtensionRegistry::load(&registry_path).unwrap_or_else(|e| {
+            tracing::warn!("Failed to load extension registry: {}. Creating new.", e);
+            ExtensionRegistry::new()
+        });
 
         let extension_installer = ExtensionInstaller::new(install_dir);
+
+        // Load available agent configurations
+        let agent_loader = crate::agent::AgentLoader::new();
+        let agent_configs = agent_loader.load_all().ok();
 
         let mut view = Self {
             client: Arc::new(MarketplaceClient::new()),
@@ -162,7 +181,10 @@ impl MarketplaceView {
             extension_registry,
             extension_installer,
             registry_path,
+            mcp_config_path,
             install_message: None,
+            selected_agent: None,
+            agent_configs,
         };
 
         // Trigger initial load
@@ -675,6 +697,57 @@ impl MarketplaceView {
                     ui.add_space(10.0);
                 }
 
+                // Agent selection dropdown for installation target
+                ui.horizontal(|ui| {
+                    ui.label(format!("{} Install for:", icons::USER));
+                    egui::ComboBox::from_id_source("install_target_agent")
+                        .selected_text(
+                            self.selected_agent
+                                .as_ref()
+                                .map(|id| {
+                                    // Find agent name from config
+                                    self.agent_configs
+                                        .as_ref()
+                                        .and_then(|configs| {
+                                            configs
+                                                .iter()
+                                                .find(|a| &a.id == id)
+                                                .map(|a| a.name.as_str())
+                                        })
+                                        .unwrap_or(id.as_str())
+                                })
+                                .unwrap_or("All Agents (Global)"),
+                        )
+                        .show_ui(ui, |ui| {
+                            // Global option (default)
+                            ui.selectable_value(
+                                &mut self.selected_agent,
+                                None,
+                                "All Agents (Global)",
+                            )
+                            .on_hover_text("Install for all agents using global mcp_config.json");
+
+                            ui.separator();
+
+                            // List available agents
+                            if let Some(ref agent_configs) = self.agent_configs {
+                                for agent in agent_configs {
+                                    ui.selectable_value(
+                                        &mut self.selected_agent,
+                                        Some(agent.id.clone()),
+                                        &agent.name,
+                                    )
+                                    .on_hover_text(format!(
+                                        "Install for {} agent only (creates agent-specific config)",
+                                        agent.name
+                                    ));
+                                }
+                            }
+                        });
+                });
+
+                ui.add_space(10.0);
+
                 // Install extension button
                 let is_installed = self.extension_registry.get(&server.name).is_some();
                 let install_button_text = if is_installed {
@@ -815,45 +888,215 @@ impl MarketplaceView {
         (self.total_servers + self.servers_per_page - 1) / self.servers_per_page
     }
 
+    /// Update MCP config for a specific agent
+    ///
+    /// Creates or updates the agent-specific MCP configuration file with the
+    /// newly installed extension. Agent-specific configs are stored in:
+    /// ~/.rustbot/mcp_configs/{agent_id}_mcp.json
+    ///
+    /// This also ensures the agent's JSON config file has the `mcpConfigFile` field set.
+    ///
+    /// # Arguments
+    /// * `agent_id` - The agent identifier
+    /// * `extension` - The installed extension to add
+    ///
+    /// # Returns
+    /// Ok(()) if successfully updated, Err if loading, updating, or saving fails
+    fn update_agent_mcp_config(
+        &self,
+        agent_id: &str,
+        extension: &InstalledExtension,
+    ) -> anyhow::Result<()> {
+        // Load or create agent-specific config
+        let mut config = McpConfig::load_or_create_for_agent(agent_id)?;
+
+        // Add extension (this replaces if already exists)
+        config.add_extension(extension.mcp_config.clone())?;
+
+        // Save updated config
+        let config_path = McpConfig::agent_config_path(agent_id)?;
+        config.save_to_file(&config_path)?;
+
+        tracing::info!(
+            "Updated agent '{}' MCP config with extension: {}",
+            agent_id,
+            extension.id
+        );
+
+        // Ensure agent's JSON config file has mcpConfigFile field
+        if let Err(e) = self.ensure_agent_has_mcp_config_file(agent_id) {
+            tracing::warn!(
+                "Failed to update agent '{}' JSON config with mcpConfigFile: {}",
+                agent_id,
+                e
+            );
+            // Don't fail the entire operation, just log the warning
+        }
+
+        Ok(())
+    }
+
+    /// Ensure agent's JSON config file has mcpConfigFile field set
+    ///
+    /// Searches for the agent's JSON config file and updates it if needed.
+    /// This auto-fixes agent configs during extension installation.
+    ///
+    /// # Arguments
+    /// * `agent_id` - The agent identifier
+    ///
+    /// # Returns
+    /// Ok(()) if config was updated or already correct, Err if agent not found or update fails
+    fn ensure_agent_has_mcp_config_file(&self, agent_id: &str) -> anyhow::Result<()> {
+        // Find the agent config in our cached list
+        let agent = self
+            .agent_configs
+            .as_ref()
+            .and_then(|configs| configs.iter().find(|a| a.id == agent_id))
+            .ok_or_else(|| anyhow::anyhow!("Agent '{}' not found in loaded configs", agent_id))?;
+
+        // Check if mcpConfigFile is already set
+        if agent.mcp_config_file.is_some() {
+            tracing::debug!(
+                "Agent '{}' already has mcpConfigFile set: {:?}",
+                agent_id,
+                agent.mcp_config_file
+            );
+            return Ok(());
+        }
+
+        // Find the agent's JSON file path
+        // Try agents/presets first, then agents/custom
+        let preset_path = std::path::PathBuf::from("agents")
+            .join("presets")
+            .join(format!("{}.json", agent_id));
+        let custom_path = std::path::PathBuf::from("agents")
+            .join("custom")
+            .join(format!("{}.json", agent_id));
+
+        let agent_file_path = if preset_path.exists() {
+            preset_path
+        } else if custom_path.exists() {
+            custom_path
+        } else {
+            anyhow::bail!(
+                "Agent config file not found for '{}' (tried {:?} and {:?})",
+                agent_id,
+                preset_path,
+                custom_path
+            );
+        };
+
+        // Update the agent's JSON file to include mcpConfigFile
+        use crate::agent::config::JsonAgentConfig;
+        JsonAgentConfig::set_mcp_config_file(&agent_file_path, agent_id)?;
+
+        tracing::info!(
+            "Auto-fixed agent '{}' config file to include mcpConfigFile field",
+            agent_id
+        );
+
+        Ok(())
+    }
+
+    /// Update global MCP config (backward compatibility)
+    ///
+    /// Updates the global mcp_config.json file, which is used by all agents
+    /// that don't have agent-specific configurations.
+    ///
+    /// # Arguments
+    /// * `extension` - The installed extension to add to mcp_config.json
+    ///
+    /// # Returns
+    /// Ok(()) if successfully updated, Err if loading, updating, or saving fails
+    fn update_global_mcp_config(&self, extension: &InstalledExtension) -> anyhow::Result<()> {
+        // Load current config
+        let mut config = McpConfig::load_from_file(&self.mcp_config_path)?;
+
+        // Add extension (this replaces if already exists)
+        config.add_extension(extension.mcp_config.clone())?;
+
+        // Save updated config
+        config.save_to_file(&self.mcp_config_path)?;
+
+        tracing::info!(
+            "Updated global mcp_config.json with extension: {}",
+            extension.id
+        );
+        Ok(())
+    }
+
     /// Install an extension from a marketplace server
     ///
     /// Creates an installed extension entry in the registry with MCP configuration.
     /// The extension is disabled by default and requires user configuration (env vars, etc.)
+    ///
+    /// Supports both agent-specific and global installation based on selected_agent.
     fn install_extension(&mut self, wrapper: &McpServerWrapper) {
         let server = &wrapper.server;
 
         // Try to install the extension
         match self.extension_installer.install_from_listing(server, None) {
             Ok(extension) => {
+                // Clone for later use (after moving into registry)
+                let extension_clone = extension.clone();
+
                 // Add to registry
                 self.extension_registry.install(extension);
 
                 // Save registry
                 match self.extension_registry.save(&self.registry_path) {
                     Ok(_) => {
-                        self.install_message = Some((
-                            format!(
-                                "✓ Successfully installed '{}'. Configure in Extensions → Installed.",
-                                server.name
-                            ),
-                            false,
-                        ));
-                        tracing::info!("Installed extension: {}", server.name);
+                        // Update appropriate MCP config based on selected agent
+                        let config_result = if let Some(ref agent_id) = self.selected_agent {
+                            self.update_agent_mcp_config(agent_id, &extension_clone)
+                        } else {
+                            self.update_global_mcp_config(&extension_clone)
+                        };
+
+                        match config_result {
+                            Ok(_) => {
+                                let target = self
+                                    .selected_agent
+                                    .as_deref()
+                                    .unwrap_or("all agents (global)");
+                                self.install_message = Some((
+                                    format!(
+                                        "✓ Successfully installed '{}' for {}. Restart to activate.",
+                                        server.name, target
+                                    ),
+                                    false,
+                                ));
+                                tracing::info!(
+                                    "Installed extension '{}' for {}",
+                                    server.name,
+                                    target
+                                );
+                            }
+                            Err(e) => {
+                                self.install_message = Some((
+                                    format!(
+                                        "⚠ Extension '{}' installed but failed to update config: {}",
+                                        server.name, e
+                                    ),
+                                    true,
+                                ));
+                                tracing::warn!(
+                                    "Extension '{}' installed but config update failed: {}",
+                                    server.name,
+                                    e
+                                );
+                            }
+                        }
                     }
                     Err(e) => {
-                        self.install_message = Some((
-                            format!("✗ Failed to save registry: {}", e),
-                            true,
-                        ));
+                        self.install_message =
+                            Some((format!("✗ Failed to save registry: {}", e), true));
                         tracing::error!("Failed to save extension registry: {}", e);
                     }
                 }
             }
             Err(e) => {
-                self.install_message = Some((
-                    format!("✗ Installation failed: {}", e),
-                    true,
-                ));
+                self.install_message = Some((format!("✗ Installation failed: {}", e), true));
                 tracing::error!("Failed to install extension '{}': {}", server.name, e);
             }
         }

@@ -191,6 +191,7 @@ struct RustbotApp {
     // Extension configuration state
     configuring_extension_id: Option<String>,
     extension_config_message: Option<(String, bool)>, // (message, is_error)
+    installed_extensions_filter: ui::InstallTypeFilter, // Filter for installed extensions view
 
     // Markdown rendering
     markdown_cache: CommonMarkCache,
@@ -316,6 +317,7 @@ impl RustbotApp {
             extensions_view: ExtensionsView::default(),
             configuring_extension_id: None,
             extension_config_message: None,
+            installed_extensions_filter: ui::InstallTypeFilter::default(),
             markdown_cache: CommonMarkCache::default(),
             mermaid_renderer,
         }

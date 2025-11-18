@@ -27,18 +27,40 @@ pub enum SettingsView {
     Agents,
 }
 
-/// Extensions sub-view (Marketplace, Installed, Remote, Local)
+/// Extensions sub-view (Marketplace, Installed)
 #[derive(PartialEq, Clone)]
 pub enum ExtensionsView {
     Marketplace, // Browse available MCP servers
-    Installed,   // View and manage installed extensions
-    Remote,      // Manage remote/cloud services
-    Local,       // View locally installed plugins
+    Installed,   // View and manage installed extensions (with filtering)
 }
 
 impl Default for ExtensionsView {
     fn default() -> Self {
         Self::Marketplace
+    }
+}
+
+/// Filter for installed extensions by installation type
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum InstallTypeFilter {
+    All,    // Show all installed extensions
+    Remote, // Show only remote/cloud extensions
+    Local,  // Show only local extensions
+}
+
+impl Default for InstallTypeFilter {
+    fn default() -> Self {
+        Self::All
+    }
+}
+
+impl InstallTypeFilter {
+    pub fn label(&self) -> &str {
+        match self {
+            Self::All => "All",
+            Self::Remote => "Remote",
+            Self::Local => "Local",
+        }
     }
 }
 

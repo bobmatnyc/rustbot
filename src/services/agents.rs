@@ -247,6 +247,7 @@ mod tests {
             is_primary: id == "agent1",
             web_search_enabled: false,
             mcp_extensions: vec![],
+            mcp_config_file: None,
         }
     }
 

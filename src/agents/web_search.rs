@@ -52,6 +52,7 @@ Format your responses clearly with:
         is_primary: false, // Specialist agent, not primary
         web_search_enabled: true,
         mcp_extensions: Vec::new(), // No MCP extensions by default
+        mcp_config_file: None,      // Use global config by default
     }
 }
 

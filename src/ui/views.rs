@@ -502,12 +502,11 @@ impl crate::RustbotApp {
         }
     }
 
-    /// Render the extensions view with tabs for Marketplace, Remote, and Local
+    /// Render the extensions view with tabs for Marketplace and Installed
     ///
     /// This view provides a unified interface for managing MCP extensions:
     /// - Marketplace: Browse and discover available MCP servers
-    /// - Remote: Manage remote/cloud-hosted MCP services
-    /// - Local: View and manage locally installed plugins
+    /// - Installed: View and manage installed extensions (with filtering)
     ///
     /// # Arguments
     /// * `ui` - The egui UI context for rendering
@@ -536,30 +535,6 @@ impl crate::RustbotApp {
             {
                 self.extensions_view = ExtensionsView::Installed;
             }
-
-            ui.add_space(10.0);
-
-            if ui
-                .selectable_label(
-                    self.extensions_view == ExtensionsView::Remote,
-                    format!("{} Remote", icons::GLOBE),
-                )
-                .clicked()
-            {
-                self.extensions_view = ExtensionsView::Remote;
-            }
-
-            ui.add_space(10.0);
-
-            if ui
-                .selectable_label(
-                    self.extensions_view == ExtensionsView::Local,
-                    format!("{} Local", icons::LIST),
-                )
-                .clicked()
-            {
-                self.extensions_view = ExtensionsView::Local;
-            }
         });
         ui.separator();
 
@@ -572,61 +547,17 @@ impl crate::RustbotApp {
             ExtensionsView::Installed => {
                 self.render_installed_extensions(ui);
             }
-            ExtensionsView::Remote => {
-                self.render_remote_extensions(ui);
-            }
-            ExtensionsView::Local => {
-                self.render_local_extensions(ui, ctx);
-            }
         }
     }
 
-    /// Render remote extensions view (placeholder for future implementation)
-    fn render_remote_extensions(&mut self, ui: &mut egui::Ui) {
-        egui::ScrollArea::vertical()
-            .auto_shrink([false; 2])
-            .show(ui, |ui| {
-                ui.add_space(20.0);
-                ui.vertical_centered(|ui| {
-                    ui.heading("Remote Extensions");
-                    ui.add_space(20.0);
-                    ui.label(
-                        egui::RichText::new("Remote extension management coming soon...")
-                            .size(14.0)
-                            .color(egui::Color32::from_rgb(120, 120, 120)),
-                    );
-                    ui.add_space(30.0);
-
-                    // Show planned features
-                    ui.group(|ui| {
-                        ui.set_min_width(400.0);
-                        ui.add_space(10.0);
-                        ui.label(egui::RichText::new("Planned Features:").strong());
-                        ui.add_space(10.0);
-
-                        ui.horizontal(|ui| {
-                            ui.label(format!("{}", icons::CLOUD));
-                            ui.label("Connect to cloud-hosted MCP services");
-                        });
-                        ui.add_space(5.0);
-
-                        ui.horizontal(|ui| {
-                            ui.label(format!("{}", icons::KEY));
-                            ui.label("Manage authentication credentials");
-                        });
-                        ui.add_space(5.0);
-
-                        ui.horizontal(|ui| {
-                            ui.label(format!("{}", icons::HEARTBEAT));
-                            ui.label("Monitor remote service health");
-                        });
-                        ui.add_space(10.0);
-                    });
-                });
-            });
-    }
-
-    /// Render installed extensions view (shows extensions from marketplace registry)
+    /// Render installed extensions view with filtering
+    ///
+    /// Shows all installed extensions with the ability to filter by type:
+    /// - All: Show all installed extensions
+    /// - Remote: Show only remote/cloud extensions
+    /// - Local: Show only local extensions
+    ///
+    /// Each extension displays a badge indicating its type (Remote/Local).
     fn render_installed_extensions(&mut self, ui: &mut egui::Ui) {
         // Check if we're showing a configuration dialog
         if let Some(ext_id) = &self.configuring_extension_id.clone() {
@@ -640,6 +571,33 @@ impl crate::RustbotApp {
                 ui.heading("Installed Extensions");
                 ui.add_space(10.0);
 
+                // Filter dropdown
+                ui.horizontal(|ui| {
+                    ui.label("Filter:");
+                    egui::ComboBox::from_id_source("install_type_filter")
+                        .selected_text(self.installed_extensions_filter.label())
+                        .show_ui(ui, |ui| {
+                            use crate::ui::InstallTypeFilter;
+                            ui.selectable_value(
+                                &mut self.installed_extensions_filter,
+                                InstallTypeFilter::All,
+                                "All",
+                            );
+                            ui.selectable_value(
+                                &mut self.installed_extensions_filter,
+                                InstallTypeFilter::Remote,
+                                "Remote",
+                            );
+                            ui.selectable_value(
+                                &mut self.installed_extensions_filter,
+                                InstallTypeFilter::Local,
+                                "Local",
+                            );
+                        });
+                });
+
+                ui.add_space(15.0);
+
                 // Load extension registry
                 use crate::mcp::extensions::ExtensionRegistry;
                 use std::path::PathBuf;
@@ -652,43 +610,111 @@ impl crate::RustbotApp {
 
                 match ExtensionRegistry::load(&registry_path) {
                     Ok(registry) => {
-                        let extensions = registry.list();
-                        if extensions.is_empty() {
+                        let all_extensions = registry.list();
+
+                        // Apply filter
+                        let filtered_extensions: Vec<_> = all_extensions
+                            .iter()
+                            .filter(|ext| {
+                                use crate::mcp::extensions::InstallationType;
+                                use crate::ui::InstallTypeFilter;
+
+                                match self.installed_extensions_filter {
+                                    InstallTypeFilter::All => true,
+                                    InstallTypeFilter::Remote => {
+                                        matches!(ext.install_type, InstallationType::Remote)
+                                    }
+                                    InstallTypeFilter::Local => {
+                                        matches!(ext.install_type, InstallationType::Local)
+                                    }
+                                }
+                            })
+                            .collect();
+
+                        if filtered_extensions.is_empty() {
                             ui.vertical_centered(|ui| {
                                 ui.add_space(40.0);
-                                ui.label(
-                                    egui::RichText::new(format!(
-                                        "{} No extensions installed",
-                                        icons::PACKAGE
-                                    ))
-                                    .size(16.0)
-                                    .color(egui::Color32::from_rgb(120, 120, 120)),
-                                );
-                                ui.add_space(10.0);
-                                ui.label(
-                                    egui::RichText::new(
-                                        "Visit the Marketplace to discover and install MCP servers",
-                                    )
-                                    .size(12.0)
-                                    .color(egui::Color32::from_rgb(150, 150, 150)),
-                                );
+                                if all_extensions.is_empty() {
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "{} No extensions installed",
+                                            icons::PACKAGE
+                                        ))
+                                        .size(16.0)
+                                        .color(egui::Color32::from_rgb(120, 120, 120)),
+                                    );
+                                    ui.add_space(10.0);
+                                    ui.label(
+                                        egui::RichText::new(
+                                            "Visit the Marketplace to discover and install MCP servers",
+                                        )
+                                        .size(12.0)
+                                        .color(egui::Color32::from_rgb(150, 150, 150)),
+                                    );
+                                } else {
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "{} No {} extensions installed",
+                                            icons::PACKAGE,
+                                            self.installed_extensions_filter.label().to_lowercase()
+                                        ))
+                                        .size(16.0)
+                                        .color(egui::Color32::from_rgb(120, 120, 120)),
+                                    );
+                                    ui.add_space(10.0);
+                                    ui.label(
+                                        egui::RichText::new("Try selecting a different filter")
+                                            .size(12.0)
+                                            .color(egui::Color32::from_rgb(150, 150, 150)),
+                                    );
+                                }
                             });
                         } else {
                             ui.label(
-                                egui::RichText::new(format!("{} installed extension(s)", extensions.len()))
-                                    .size(12.0)
-                                    .color(egui::Color32::from_rgb(120, 120, 120)),
+                                egui::RichText::new(format!(
+                                    "{} extension(s) shown ({} total installed)",
+                                    filtered_extensions.len(),
+                                    all_extensions.len()
+                                ))
+                                .size(12.0)
+                                .color(egui::Color32::from_rgb(120, 120, 120)),
                             );
                             ui.add_space(10.0);
 
-                            // Display each installed extension
-                            for ext in extensions {
+                            // Display each filtered extension
+                            for ext in filtered_extensions {
                                 ui.group(|ui| {
                                     ui.set_min_width(ui.available_width());
                                     ui.add_space(5.0);
 
-                                    // Extension header
+                                    // Extension header with type badge
                                     ui.horizontal(|ui| {
+                                        // Type badge (Remote or Local)
+                                        use crate::mcp::extensions::InstallationType;
+                                        let (badge_icon, badge_text, badge_color) = match ext.install_type {
+                                            InstallationType::Remote => (
+                                                icons::CLOUD,
+                                                "Remote",
+                                                egui::Color32::from_rgb(80, 150, 220),
+                                            ),
+                                            InstallationType::Local => (
+                                                icons::DESKTOP,
+                                                "Local",
+                                                egui::Color32::from_rgb(100, 180, 100),
+                                            ),
+                                        };
+
+                                        // Draw badge with background
+                                        let badge_label = format!("{} {}", badge_icon, badge_text);
+                                        ui.label(
+                                            egui::RichText::new(badge_label)
+                                                .size(11.0)
+                                                .color(badge_color)
+                                                .strong(),
+                                        );
+
+                                        ui.add_space(10.0);
+
                                         ui.label(
                                             egui::RichText::new(&ext.name)
                                                 .size(16.0)
@@ -720,21 +746,8 @@ impl crate::RustbotApp {
                                         ui.add_space(5.0);
                                     }
 
-                                    // Installation details
+                                    // Installation date
                                     ui.horizontal(|ui| {
-                                        ui.label(
-                                            egui::RichText::new(format!(
-                                                "{} {}",
-                                                icons::DOWNLOAD_SIMPLE,
-                                                match ext.install_type {
-                                                    crate::mcp::extensions::InstallationType::Local => "Local",
-                                                    crate::mcp::extensions::InstallationType::Remote => "Remote",
-                                                }
-                                            ))
-                                            .size(11.0)
-                                            .color(egui::Color32::from_rgb(120, 120, 120)),
-                                        );
-
                                         ui.label(
                                             egui::RichText::new(format!(
                                                 "{} Installed: {}",
@@ -934,23 +947,6 @@ impl crate::RustbotApp {
                     );
                 }
             });
-    }
-
-    /// Render local extensions view (shows installed MCP plugins)
-    fn render_local_extensions(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        // Reuse existing plugins view for local extensions
-        if let Some(plugins_view) = &mut self.plugins_view {
-            plugins_view.render(ui, ctx);
-        } else {
-            ui.vertical_centered(|ui| {
-                ui.add_space(50.0);
-                ui.label(
-                    egui::RichText::new("Local extensions view not initialized")
-                        .size(14.0)
-                        .color(egui::Color32::from_rgb(120, 120, 120)),
-                );
-            });
-        }
     }
 
     /// Render the agents management view
