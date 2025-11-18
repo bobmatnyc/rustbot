@@ -14,6 +14,8 @@
 use crate::agent::{Agent, AgentConfig};
 use crate::error::Result;
 use async_trait::async_trait;
+#[cfg(test)]
+use mockall::automock;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -28,6 +30,7 @@ use std::sync::Arc;
 /// Usage:
 ///     let fs: Arc<dyn FileSystem> = Arc::new(RealFileSystem);
 ///     let content = fs.read_to_string(Path::new("config.json")).await?;
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait FileSystem: Send + Sync {
     /// Read entire file contents as a UTF-8 string
@@ -79,6 +82,7 @@ pub trait FileSystem: Send + Sync {
 ///     let storage: Arc<dyn StorageService> = Arc::new(FileStorageService::new(...));
 ///     let stats = storage.load_token_stats().await?;
 ///     storage.save_token_stats(&updated_stats).await?;
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait StorageService: Send + Sync {
     /// Load token usage statistics from persistent storage
@@ -126,6 +130,7 @@ pub trait StorageService: Send + Sync {
 ///     let config: Arc<dyn ConfigService> = Arc::new(FileConfigService::load()?);
 ///     let api_key = config.get_api_key()?;
 ///     let agents_dir = config.get_agents_dir();
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait ConfigService: Send + Sync {
     /// Load all agent configurations from configured directory
@@ -181,6 +186,7 @@ pub trait ConfigService: Send + Sync {
 ///     let agent = service.get_agent("researcher").await?;
 ///     let all_agents = service.list_agents();
 ///     service.switch_agent("writer").await?;
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait AgentService: Send + Sync {
     /// Get agent by ID

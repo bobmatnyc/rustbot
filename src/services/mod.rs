@@ -33,15 +33,19 @@
 // Extension Points: Add new service traits as infrastructure needs grow
 // (database, cache, message queue, etc.)
 
-pub mod traits;
-pub mod filesystem;
-pub mod storage;
-pub mod config;
 pub mod agents;
+pub mod config;
+pub mod filesystem;
+#[cfg(test)]
+pub mod integration_tests;
+#[cfg(test)]
+pub mod mocks;
+pub mod storage;
+pub mod traits;
 
 // Re-export commonly used types
-pub use traits::{FileSystem, StorageService, ConfigService, AgentService};
+pub use agents::DefaultAgentService;
+pub use config::FileConfigService;
 pub use filesystem::RealFileSystem;
 pub use storage::FileStorageService;
-pub use config::FileConfigService;
-pub use agents::DefaultAgentService;
+pub use traits::{AgentService, ConfigService, FileSystem, StorageService};

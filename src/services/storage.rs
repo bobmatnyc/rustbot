@@ -86,20 +86,18 @@ impl StorageService for FileStorageService {
 
         let content = self.fs.read_to_string(&path).await?;
 
-        serde_json::from_str(&content)
-            .map_err(|e| RustbotError::StorageError(
-                format!("Failed to deserialize token stats: {}", e)
-            ))
+        serde_json::from_str(&content).map_err(|e| {
+            RustbotError::StorageError(format!("Failed to deserialize token stats: {}", e))
+        })
     }
 
     async fn save_token_stats(&self, stats: &TokenStats) -> Result<()> {
         self.ensure_base_dir().await?;
 
         let path = self.token_stats_path();
-        let content = serde_json::to_string_pretty(stats)
-            .map_err(|e| RustbotError::StorageError(
-                format!("Failed to serialize token stats: {}", e)
-            ))?;
+        let content = serde_json::to_string_pretty(stats).map_err(|e| {
+            RustbotError::StorageError(format!("Failed to serialize token stats: {}", e))
+        })?;
 
         self.fs.write(&path, &content).await?;
         Ok(())
@@ -115,20 +113,18 @@ impl StorageService for FileStorageService {
 
         let content = self.fs.read_to_string(&path).await?;
 
-        serde_json::from_str(&content)
-            .map_err(|e| RustbotError::StorageError(
-                format!("Failed to deserialize system prompts: {}", e)
-            ))
+        serde_json::from_str(&content).map_err(|e| {
+            RustbotError::StorageError(format!("Failed to deserialize system prompts: {}", e))
+        })
     }
 
     async fn save_system_prompts(&self, prompts: &SystemPrompts) -> Result<()> {
         self.ensure_base_dir().await?;
 
         let path = self.system_prompts_path();
-        let content = serde_json::to_string_pretty(prompts)
-            .map_err(|e| RustbotError::StorageError(
-                format!("Failed to serialize system prompts: {}", e)
-            ))?;
+        let content = serde_json::to_string_pretty(prompts).map_err(|e| {
+            RustbotError::StorageError(format!("Failed to serialize system prompts: {}", e))
+        })?;
 
         self.fs.write(&path, &content).await?;
         Ok(())
@@ -138,8 +134,13 @@ impl StorageService for FileStorageService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::mocks::test_helpers::*;
+    use crate::services::traits::MockFileSystem;
     use crate::services::RealFileSystem;
+    use mockall::predicate::*;
     use tempfile::TempDir;
+
+    // ===== INTEGRATION TESTS (using real filesystem) =====
 
     #[tokio::test]
     async fn test_load_token_stats_default() {
@@ -203,7 +204,10 @@ mod tests {
         // Load and verify
         let loaded_prompts = storage.load_system_prompts().await.unwrap();
         assert_eq!(loaded_prompts.base_prompt, "You are a helpful assistant.");
-        assert_eq!(loaded_prompts.context, Some("Additional context here.".to_string()));
+        assert_eq!(
+            loaded_prompts.context,
+            Some("Additional context here.".to_string())
+        );
     }
 
     #[tokio::test]
@@ -223,5 +227,305 @@ mod tests {
 
         // Directory should now exist
         assert!(fs.exists(&nested_path).await);
+    }
+
+    // ===== UNIT TESTS (using mocks) =====
+
+    #[tokio::test]
+    async fn test_mock_load_token_stats_success() {
+        let mut mock_fs = MockFileSystem::new();
+
+        // Setup: file exists with valid JSON
+        let test_path = PathBuf::from("data/token_stats.json");
+        mock_fs
+            .expect_exists()
+            .with(eq(test_path.clone()))
+            .times(1)
+            .returning(|_| true);
+
+        mock_fs
+            .expect_read_to_string()
+            .with(eq(test_path))
+            .times(1)
+            .returning(|_| {
+                Ok(r#"{
+                    "total_input_tokens": 1000,
+                    "total_output_tokens": 500,
+                    "total_cost": 0.05,
+                    "last_updated": "2024-01-01T00:00:00Z"
+                }"#
+                .to_string())
+            });
+
+        let storage = FileStorageService::new(Arc::new(mock_fs), PathBuf::from("data"));
+
+        let stats = storage.load_token_stats().await.unwrap();
+        assert_eq!(stats.total_input_tokens, 1000);
+        assert_eq!(stats.total_output_tokens, 500);
+        assert_eq!(stats.total_cost, 0.05);
+    }
+
+    #[tokio::test]
+    async fn test_mock_load_token_stats_file_not_found() {
+        let mut mock_fs = MockFileSystem::new();
+
+        // Setup: file doesn't exist
+        let test_path = PathBuf::from("data/token_stats.json");
+        mock_fs
+            .expect_exists()
+            .with(eq(test_path))
+            .times(1)
+            .returning(|_| false);
+
+        let storage = FileStorageService::new(Arc::new(mock_fs), PathBuf::from("data"));
+
+        // Should return default stats
+        let stats = storage.load_token_stats().await.unwrap();
+        assert_eq!(stats.total_input_tokens, 0);
+        assert_eq!(stats.total_output_tokens, 0);
+        assert_eq!(stats.total_cost, 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_mock_load_token_stats_invalid_json() {
+        let mut mock_fs = MockFileSystem::new();
+
+        // Setup: file exists but contains invalid JSON
+        let test_path = PathBuf::from("data/token_stats.json");
+        mock_fs
+            .expect_exists()
+            .with(eq(test_path.clone()))
+            .times(1)
+            .returning(|_| true);
+
+        mock_fs
+            .expect_read_to_string()
+            .with(eq(test_path))
+            .times(1)
+            .returning(|_| Ok("invalid json {{{".to_string()));
+
+        let storage = FileStorageService::new(Arc::new(mock_fs), PathBuf::from("data"));
+
+        let result = storage.load_token_stats().await;
+        assert!(result.is_err());
+
+        match result {
+            Err(RustbotError::StorageError(msg)) => {
+                assert!(msg.contains("Failed to deserialize token stats"));
+            }
+            _ => panic!("Expected StorageError"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mock_save_token_stats_success() {
+        let mut mock_fs = MockFileSystem::new();
+
+        let base_path = PathBuf::from("data");
+        let test_path = base_path.join("token_stats.json");
+
+        // Setup: directory doesn't exist, needs creation
+        mock_fs
+            .expect_exists()
+            .with(eq(base_path.clone()))
+            .times(1)
+            .returning(|_| false);
+
+        mock_fs
+            .expect_create_dir_all()
+            .with(eq(base_path))
+            .times(1)
+            .returning(|_| Ok(()));
+
+        // Expect write with JSON containing token stats
+        mock_fs
+            .expect_write()
+            .with(
+                eq(test_path),
+                function(|s: &str| {
+                    s.contains("total_input_tokens")
+                        && s.contains("500")
+                        && s.contains("total_output_tokens")
+                        && s.contains("250")
+                }),
+            )
+            .times(1)
+            .returning(|_, _| Ok(()));
+
+        let storage = FileStorageService::new(Arc::new(mock_fs), PathBuf::from("data"));
+
+        let stats = create_test_token_stats(500, 250, 0.025);
+        assert!(storage.save_token_stats(&stats).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_mock_save_token_stats_write_error() {
+        let mut mock_fs = MockFileSystem::new();
+
+        let base_path = PathBuf::from("data");
+
+        // Setup: directory exists
+        mock_fs
+            .expect_exists()
+            .with(eq(base_path.clone()))
+            .times(1)
+            .returning(|_| true);
+
+        // Write fails (e.g., disk full, permission denied)
+        mock_fs.expect_write().times(1).returning(|_, _| {
+            Err(RustbotError::IoError(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "Permission denied",
+            )))
+        });
+
+        let storage = FileStorageService::new(Arc::new(mock_fs), PathBuf::from("data"));
+
+        let stats = TokenStats::default();
+        let result = storage.save_token_stats(&stats).await;
+
+        assert!(result.is_err());
+        match result {
+            Err(RustbotError::IoError(_)) => {} // Expected
+            _ => panic!("Expected IoError"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mock_load_system_prompts_success() {
+        let mut mock_fs = MockFileSystem::new();
+
+        let test_path = PathBuf::from("data/system_prompts.json");
+        mock_fs
+            .expect_exists()
+            .with(eq(test_path.clone()))
+            .times(1)
+            .returning(|_| true);
+
+        mock_fs
+            .expect_read_to_string()
+            .with(eq(test_path))
+            .times(1)
+            .returning(|_| {
+                Ok(r#"{
+                    "base_prompt": "You are a helpful assistant.",
+                    "context": "Additional context here."
+                }"#
+                .to_string())
+            });
+
+        let storage = FileStorageService::new(Arc::new(mock_fs), PathBuf::from("data"));
+
+        let prompts = storage.load_system_prompts().await.unwrap();
+        assert_eq!(prompts.base_prompt, "You are a helpful assistant.");
+        assert_eq!(
+            prompts.context,
+            Some("Additional context here.".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_mock_load_system_prompts_default() {
+        let mut mock_fs = MockFileSystem::new();
+
+        // File doesn't exist
+        let test_path = PathBuf::from("data/system_prompts.json");
+        mock_fs
+            .expect_exists()
+            .with(eq(test_path))
+            .times(1)
+            .returning(|_| false);
+
+        let storage = FileStorageService::new(Arc::new(mock_fs), PathBuf::from("data"));
+
+        let prompts = storage.load_system_prompts().await.unwrap();
+        assert_eq!(prompts.base_prompt, "");
+        assert_eq!(prompts.context, None);
+    }
+
+    #[tokio::test]
+    async fn test_mock_save_system_prompts_success() {
+        let mut mock_fs = MockFileSystem::new();
+
+        let base_path = PathBuf::from("data");
+        let test_path = base_path.join("system_prompts.json");
+
+        mock_fs
+            .expect_exists()
+            .with(eq(base_path.clone()))
+            .times(1)
+            .returning(|_| true);
+
+        mock_fs
+            .expect_write()
+            .with(
+                eq(test_path),
+                function(|s: &str| s.contains("base_prompt") && s.contains("Test base prompt")),
+            )
+            .times(1)
+            .returning(|_, _| Ok(()));
+
+        let storage = FileStorageService::new(Arc::new(mock_fs), PathBuf::from("data"));
+
+        let prompts = create_test_system_prompts("Test base prompt", Some("Test context"));
+        assert!(storage.save_system_prompts(&prompts).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_mock_concurrent_reads() {
+        // Test that service is Send + Sync
+        let mut mock_fs = MockFileSystem::new();
+
+        mock_fs.expect_exists().returning(|_| false);
+
+        let storage = Arc::new(FileStorageService::new(
+            Arc::new(mock_fs),
+            PathBuf::from("data"),
+        ));
+
+        let storage1 = storage.clone();
+        let storage2 = storage.clone();
+
+        // Spawn concurrent reads
+        let handle1 = tokio::spawn(async move { storage1.load_token_stats().await });
+
+        let handle2 = tokio::spawn(async move { storage2.load_system_prompts().await });
+
+        // Both should complete without deadlock
+        let (result1, result2) = tokio::try_join!(handle1, handle2).unwrap();
+
+        assert!(result1.is_ok());
+        assert!(result2.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_mock_directory_creation_once() {
+        let mut mock_fs = MockFileSystem::new();
+
+        let base_path = PathBuf::from("data");
+
+        // First call: directory doesn't exist
+        mock_fs
+            .expect_exists()
+            .with(eq(base_path.clone()))
+            .times(2) // Called twice (for two saves)
+            .returning(|_| false);
+
+        // Directory creation should be called twice (once per save)
+        mock_fs
+            .expect_create_dir_all()
+            .with(eq(base_path.clone()))
+            .times(2)
+            .returning(|_| Ok(()));
+
+        // Write should be called twice
+        mock_fs.expect_write().times(2).returning(|_, _| Ok(()));
+
+        let storage = FileStorageService::new(Arc::new(mock_fs), PathBuf::from("data"));
+
+        // Save twice
+        let stats = TokenStats::default();
+        storage.save_token_stats(&stats).await.unwrap();
+        storage.save_token_stats(&stats).await.unwrap();
     }
 }

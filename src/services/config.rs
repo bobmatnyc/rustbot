@@ -69,21 +69,20 @@ impl FileConfigService {
         dotenvy::dotenv().ok();
 
         // Get API key (required)
-        let api_key = std::env::var("OPENROUTER_API_KEY")
-            .map_err(|_| RustbotError::EnvError(
-                "OPENROUTER_API_KEY environment variable not set".to_string()
-            ))?;
+        let api_key = std::env::var("OPENROUTER_API_KEY").map_err(|_| {
+            RustbotError::EnvError("OPENROUTER_API_KEY environment variable not set".to_string())
+        })?;
 
         // Get optional config with defaults
-        let model = std::env::var("MODEL")
-            .unwrap_or_else(|_| "anthropic/claude-sonnet-4".to_string());
+        let model =
+            std::env::var("MODEL").unwrap_or_else(|_| "anthropic/claude-sonnet-4".to_string());
 
         let agents_dir = std::env::var("AGENTS_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("agents"));
 
-        let active_agent_id = std::env::var("ACTIVE_AGENT_ID")
-            .unwrap_or_else(|_| "assistant".to_string());
+        let active_agent_id =
+            std::env::var("ACTIVE_AGENT_ID").unwrap_or_else(|_| "assistant".to_string());
 
         Ok(Self {
             api_key,
@@ -99,17 +98,16 @@ impl ConfigService for FileConfigService {
     async fn load_agent_configs(&self) -> Result<Vec<AgentConfig>> {
         let loader = AgentLoader::new();
 
-        loader.load_all()
-            .map_err(|e| RustbotError::ConfigError(
-                format!("Failed to load agent configs: {}", e)
-            ))
+        loader
+            .load_all()
+            .map_err(|e| RustbotError::ConfigError(format!("Failed to load agent configs: {}", e)))
     }
 
     async fn save_agent_config(&self, config: &AgentConfig) -> Result<()> {
         // For now, we don't implement saving agents to JSON
         // This can be added when we need runtime agent creation
         Err(RustbotError::ConfigError(
-            "Saving agent configs not yet implemented".to_string()
+            "Saving agent configs not yet implemented".to_string(),
         ))
     }
 
@@ -121,7 +119,7 @@ impl ConfigService for FileConfigService {
         // For now, we don't persist active agent changes
         // This can be added when we implement user preferences storage
         Err(RustbotError::ConfigError(
-            "Setting active agent ID not yet implemented".to_string()
+            "Setting active agent ID not yet implemented".to_string(),
         ))
     }
 

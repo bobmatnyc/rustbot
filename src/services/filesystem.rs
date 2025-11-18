@@ -56,7 +56,11 @@ impl FileSystem for RealFileSystem {
             .await
             .map_err(|e| RustbotError::IoError(e))?;
 
-        while let Some(entry) = read_dir.next_entry().await.map_err(|e| RustbotError::IoError(e))? {
+        while let Some(entry) = read_dir
+            .next_entry()
+            .await
+            .map_err(|e| RustbotError::IoError(e))?
+        {
             entries.push(entry.path());
         }
 
@@ -67,6 +71,7 @@ impl FileSystem for RealFileSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -77,14 +82,10 @@ mod tests {
         let fs = RealFileSystem;
 
         // Test write
-        fs.write(&test_file, "Hello, world!")
-            .await
-            .expect("Failed to write file");
+        fs.write(&test_file, "Hello, world!").await.unwrap();
 
         // Test read
-        let content = fs.read_to_string(&test_file)
-            .await
-            .expect("Failed to read file");
+        let content = fs.read_to_string(&test_file).await.unwrap();
 
         assert_eq!(content, "Hello, world!");
     }
@@ -114,9 +115,7 @@ mod tests {
         let fs = RealFileSystem;
 
         // Create nested directories
-        fs.create_dir_all(&nested_dir)
-            .await
-            .expect("Failed to create directories");
+        fs.create_dir_all(&nested_dir).await.unwrap();
 
         // Verify they exist
         assert!(fs.exists(&nested_dir).await);
@@ -128,8 +127,12 @@ mod tests {
         let fs = RealFileSystem;
 
         // Create some files
-        fs.write(&temp_dir.path().join("file1.txt"), "content1").await.unwrap();
-        fs.write(&temp_dir.path().join("file2.txt"), "content2").await.unwrap();
+        fs.write(&temp_dir.path().join("file1.txt"), "content1")
+            .await
+            .unwrap();
+        fs.write(&temp_dir.path().join("file2.txt"), "content2")
+            .await
+            .unwrap();
 
         // Read directory
         let entries = fs.read_dir(temp_dir.path()).await.unwrap();
@@ -138,7 +141,8 @@ mod tests {
         assert_eq!(entries.len(), 2);
 
         // Check that both files are listed
-        let file_names: Vec<_> = entries.iter()
+        let file_names: Vec<_> = entries
+            .iter()
             .filter_map(|p| p.file_name().and_then(|n| n.to_str()))
             .collect();
 
@@ -153,8 +157,96 @@ mod tests {
 
         assert!(result.is_err());
         match result {
-            Err(RustbotError::IoError(_)) => {}, // Expected
+            Err(RustbotError::IoError(_)) => {} // Expected
             _ => panic!("Expected IoError"),
         }
+    }
+
+    // ===== UNIT TESTS (documenting FileSystem trait contract) =====
+    // Note: RealFileSystem is a thin wrapper, so we test it with real I/O.
+    // Mock tests are in services that USE FileSystem trait.
+
+    #[tokio::test]
+    async fn test_filesystem_trait_send_sync() {
+        // Verify FileSystem is Send + Sync for concurrent use
+        let fs: Arc<dyn FileSystem> = Arc::new(RealFileSystem);
+
+        let fs1 = fs.clone();
+        let fs2 = fs.clone();
+
+        let handle1 = tokio::spawn(async move {
+            let temp = tempfile::NamedTempFile::new().unwrap();
+            fs1.write(temp.path(), "test1").await
+        });
+
+        let handle2 = tokio::spawn(async move {
+            let temp = tempfile::NamedTempFile::new().unwrap();
+            fs2.write(temp.path(), "test2").await
+        });
+
+        let (result1, result2) = tokio::try_join!(handle1, handle2).unwrap();
+        assert!(result1.is_ok());
+        assert!(result2.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_utf8_handling() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_file = temp_dir.path().join("utf8.txt");
+        let fs = RealFileSystem;
+
+        // Write UTF-8 with various characters
+        let content = "Hello 世界 🦀 Rust!";
+        fs.write(&test_file, content).await.unwrap();
+
+        // Read back and verify
+        let read_content = fs.read_to_string(&test_file).await.unwrap();
+        assert_eq!(read_content, content);
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_empty_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_file = temp_dir.path().join("empty.txt");
+        let fs = RealFileSystem;
+
+        // Write empty file
+        fs.write(&test_file, "").await.unwrap();
+
+        // Read back
+        let content = fs.read_to_string(&test_file).await.unwrap();
+        assert_eq!(content, "");
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_overwrite() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_file = temp_dir.path().join("overwrite.txt");
+        let fs = RealFileSystem;
+
+        // Write initial content
+        fs.write(&test_file, "original").await.unwrap();
+        let content1 = fs.read_to_string(&test_file).await.unwrap();
+        assert_eq!(content1, "original");
+
+        // Overwrite
+        fs.write(&test_file, "modified").await.unwrap();
+        let content2 = fs.read_to_string(&test_file).await.unwrap();
+        assert_eq!(content2, "modified");
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_large_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_file = temp_dir.path().join("large.txt");
+        let fs = RealFileSystem;
+
+        // Write 1MB of data
+        let large_content = "x".repeat(1024 * 1024);
+        fs.write(&test_file, &large_content).await.unwrap();
+
+        // Read back and verify size
+        let read_content = fs.read_to_string(&test_file).await.unwrap();
+        assert_eq!(read_content.len(), large_content.len());
     }
 }

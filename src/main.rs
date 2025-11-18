@@ -1,30 +1,36 @@
 mod agent;
 mod agents;
 mod api;
+mod app_builder;
 mod error;
 mod events;
 mod llm;
 mod mcp;
 mod mermaid;
+mod services;
 mod tool_executor;
 mod ui;
 mod version;
 
 use agent::AgentConfig;
 use api::RustbotApi;
+use app_builder::{AppBuilder, AppDependencies};
 use eframe::egui;
+use egui_commonmark::CommonMarkCache;
+use egui_phosphor::regular as icons;
 use error::{Result, RustbotError};
 use events::{Event, EventBus, EventKind, SystemCommand};
 use llm::{create_adapter, AdapterType, LlmAdapter};
-use std::sync::Arc;
-use std::collections::VecDeque;
-use tokio::sync::{broadcast, mpsc, Mutex};
-use std::path::PathBuf;
-use egui_phosphor::regular as icons;
-use ui::{AppView, ChatMessage, ContextTracker, MessageRole, PluginsView, SettingsView, ExtensionsView, SystemPrompts, TokenStats, VisualEvent};
-use ui::icon::create_window_icon;
 use mcp::manager::McpPluginManager;
-use egui_commonmark::CommonMarkCache;
+use std::collections::VecDeque;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::{broadcast, mpsc, Mutex};
+use ui::icon::create_window_icon;
+use ui::{
+    AppView, ChatMessage, ContextTracker, ExtensionsView, MessageRole, PluginsView, SettingsView,
+    SystemPrompts, TokenStats, VisualEvent,
+};
 
 fn main() -> std::result::Result<(), eframe::Error> {
     // Initialize tracing for logging
@@ -47,6 +53,41 @@ fn main() -> std::result::Result<(), eframe::Error> {
         tracing::warn!(".env.local file not found - will need OPENROUTER_API_KEY from environment");
     }
 
+    // Get API key with proper error handling to avoid panic in FFI boundary
+    let api_key = match std::env::var("OPENROUTER_API_KEY") {
+        Ok(key) => key,
+        Err(_) => {
+            // Log error for debugging
+            tracing::error!("OPENROUTER_API_KEY not found in environment");
+            tracing::error!(
+                "Please ensure .env.local file exists with OPENROUTER_API_KEY=your_key"
+            );
+
+            // Display error message to user and exit gracefully
+            eprintln!("\n❌ ERROR: Missing OPENROUTER_API_KEY environment variable\n");
+            eprintln!("Please create a .env.local file in the project directory with:");
+            eprintln!("OPENROUTER_API_KEY=your_api_key_here\n");
+            eprintln!("Get your API key from: https://openrouter.ai/keys\n");
+
+            // Exit gracefully instead of panicking in FFI boundary
+            std::process::exit(1);
+        }
+    };
+
+    // Build dependencies using AppBuilder
+    let deps = tokio::runtime::Runtime::new()
+        .expect("Failed to create runtime")
+        .block_on(async {
+            AppBuilder::new()
+                .with_api_key(api_key.clone())
+                .with_base_path(std::path::PathBuf::from("."))
+                .with_production_deps()
+                .await
+                .expect("Failed to build dependencies")
+                .build()
+                .expect("Failed to finalize dependencies")
+        });
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([800.0, 600.0])
@@ -58,7 +99,7 @@ fn main() -> std::result::Result<(), eframe::Error> {
     eframe::run_native(
         "rustbot",
         options,
-        Box::new(|cc| {
+        Box::new(move |cc| {
             // Install SVG image loader for rendering Mermaid diagrams
             egui_extras::install_image_loaders(&cc.egui_ctx);
 
@@ -101,30 +142,15 @@ fn main() -> std::result::Result<(), eframe::Error> {
             // Apply fonts
             cc.egui_ctx.set_fonts(fonts);
 
-            // Get API key with proper error handling to avoid panic in FFI boundary
-            let api_key = match std::env::var("OPENROUTER_API_KEY") {
-                Ok(key) => key,
-                Err(_) => {
-                    // Log error for debugging
-                    tracing::error!("OPENROUTER_API_KEY not found in environment");
-                    tracing::error!("Please ensure .env.local file exists with OPENROUTER_API_KEY=your_key");
-
-                    // Display error message to user and exit gracefully
-                    eprintln!("\n❌ ERROR: Missing OPENROUTER_API_KEY environment variable\n");
-                    eprintln!("Please create a .env.local file in the project directory with:");
-                    eprintln!("OPENROUTER_API_KEY=your_api_key_here\n");
-                    eprintln!("Get your API key from: https://openrouter.ai/keys\n");
-
-                    // Exit gracefully instead of panicking in FFI boundary
-                    std::process::exit(1);
-                }
-            };
-            Ok(Box::new(RustbotApp::new(api_key)))
+            Ok(Box::new(RustbotApp::new(deps, api_key)))
         }),
     )
 }
 
 struct RustbotApp {
+    // Injected dependencies (service layer)
+    deps: AppDependencies,
+
     // Core API for all functionality - wrapped in Arc<Mutex> for thread safety
     api: Arc<Mutex<RustbotApi>>,
 
@@ -141,7 +167,7 @@ struct RustbotApp {
     current_view: AppView,
     settings_view: SettingsView,
     system_prompts: SystemPrompts,
-    current_activity: Option<String>,  // Track current agent activity
+    current_activity: Option<String>, // Track current agent activity
 
     // Event visualization
     event_rx: broadcast::Receiver<Event>,
@@ -153,7 +179,8 @@ struct RustbotApp {
     selected_agent_index: Option<usize>,
 
     // Pending agent result receiver
-    pending_agent_result: Option<mpsc::UnboundedReceiver<anyhow::Result<mpsc::UnboundedReceiver<String>>>>,
+    pending_agent_result:
+        Option<mpsc::UnboundedReceiver<anyhow::Result<mpsc::UnboundedReceiver<String>>>>,
 
     // MCP Plugin Manager and UI
     mcp_manager: Arc<Mutex<McpPluginManager>>,
@@ -166,45 +193,50 @@ struct RustbotApp {
 
     // Mermaid diagram rendering
     mermaid_renderer: Arc<Mutex<mermaid::MermaidRenderer>>,
-
-    // Keep runtime for async operations
-    runtime: Arc<tokio::runtime::Runtime>,
 }
 
 impl RustbotApp {
-    fn new(api_key: String) -> Self {
+    fn new(deps: AppDependencies, api_key: String) -> Self {
+        // Get runtime from dependencies (required)
+        let runtime = deps
+            .runtime
+            .as_ref()
+            .expect("Runtime is required for RustbotApp");
+
+        // Load persisted state (UI-specific types, not from service layer)
+        // Note: TokenStats and SystemPrompts are UI-specific types with different
+        // structure from the service layer types, so we handle them directly
         let token_stats = Self::load_token_stats().unwrap_or_default();
         let system_prompts = Self::load_system_prompts().unwrap_or_default();
 
-        // Create event bus
-        let event_bus = Arc::new(EventBus::new());
-        let event_rx = event_bus.subscribe();
+        // Subscribe to event bus
+        let event_rx = deps.event_bus.subscribe();
 
-        // Create runtime
-        let runtime = Arc::new(tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime"));
+        // Get LLM adapter from dependencies (required)
+        let llm_adapter = deps
+            .llm_adapter
+            .as_ref()
+            .expect("LLM adapter is required for RustbotApp");
 
-        // Create LLM adapter
-        let llm_adapter: Arc<dyn LlmAdapter> = Arc::from(create_adapter(AdapterType::OpenRouter, api_key.clone()));
-
-        // Load agents from JSON preset files using AgentLoader
-        let agent_loader = agent::AgentLoader::new();
-        let mut agent_configs = agent_loader.load_all()
-            .unwrap_or_else(|e| {
-                tracing::warn!("Failed to load agents from presets: {}", e);
+        // Load agents from config service
+        let mut agent_configs = runtime.block_on(async {
+            deps.config.load_agent_configs().await.unwrap_or_else(|e| {
+                tracing::warn!("Failed to load agents from config service: {}", e);
                 vec![]
-            });
+            })
+        });
 
         // If no agents loaded, fall back to default assistant
         if agent_configs.is_empty() {
-            tracing::info!("No agents loaded from JSON, using default assistant");
+            tracing::info!("No agents loaded, using default assistant");
             agent_configs.push(AgentConfig::default_assistant());
         }
 
         // Build the API using RustbotApiBuilder with all loaded agents
         let mut api_builder = api::RustbotApiBuilder::new()
-            .event_bus(Arc::clone(&event_bus))
-            .runtime(Arc::clone(&runtime))
-            .llm_adapter(Arc::clone(&llm_adapter))
+            .event_bus(Arc::clone(&deps.event_bus))
+            .runtime(Arc::clone(runtime))
+            .llm_adapter(Arc::clone(llm_adapter))
             .max_history_size(20)
             .system_instructions(system_prompts.system_instructions.clone());
 
@@ -216,9 +248,9 @@ impl RustbotApp {
         let api = api_builder.build().expect("Failed to build RustbotApi");
 
         // Initialize MCP plugin manager with event bus
-        let mcp_manager = Arc::new(Mutex::new(McpPluginManager::with_event_bus(
-            Some(Arc::clone(&event_bus))
-        )));
+        let mcp_manager = Arc::new(Mutex::new(McpPluginManager::with_event_bus(Some(
+            Arc::clone(&deps.event_bus),
+        ))));
 
         // Load MCP configuration if available
         let mcp_config_path = std::path::Path::new("mcp_config.json");
@@ -243,7 +275,7 @@ impl RustbotApp {
         // Create plugins view with runtime handle
         let plugins_view = Some(PluginsView::new(
             Arc::clone(&mcp_manager),
-            runtime.handle().clone()
+            runtime.handle().clone(),
         ));
 
         // Create marketplace view with runtime handle
@@ -253,6 +285,7 @@ impl RustbotApp {
         let mermaid_renderer = Arc::new(Mutex::new(mermaid::MermaidRenderer::new()));
 
         Self {
+            deps,
             api: Arc::new(Mutex::new(api)),
             message_input: String::new(),
             messages: Vec::new(),
@@ -279,16 +312,17 @@ impl RustbotApp {
             extensions_view: ExtensionsView::default(),
             markdown_cache: CommonMarkCache::default(),
             mermaid_renderer,
-            runtime,
         }
     }
 
     fn get_instructions_dir() -> Result<PathBuf> {
         let home_dir = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
-            .map_err(|_| RustbotError::EnvError(
-                "Could not determine home directory: HOME or USERPROFILE not set".to_string()
-            ))?;
+            .map_err(|_| {
+                RustbotError::EnvError(
+                    "Could not determine home directory: HOME or USERPROFILE not set".to_string(),
+                )
+            })?;
 
         let mut dir = PathBuf::from(home_dir);
         dir.push(".rustbot");
@@ -296,10 +330,12 @@ impl RustbotApp {
 
         // Create directory if it doesn't exist
         if !dir.exists() {
-            std::fs::create_dir_all(&dir)
-                .map_err(|e| RustbotError::StorageError(
-                    format!("Failed to create instructions directory: {}", e)
-                ))?;
+            std::fs::create_dir_all(&dir).map_err(|e| {
+                RustbotError::StorageError(format!(
+                    "Failed to create instructions directory: {}",
+                    e
+                ))
+            })?;
         }
 
         Ok(dir)
@@ -312,10 +348,12 @@ impl RustbotApp {
         dir.push("system");
         dir.push("current");
         let system_instructions = if dir.exists() {
-            std::fs::read_to_string(&dir)
-                .map_err(|e| RustbotError::StorageError(
-                    format!("Failed to read system instructions from {:?}: {}", dir, e)
-                ))?
+            std::fs::read_to_string(&dir).map_err(|e| {
+                RustbotError::StorageError(format!(
+                    "Failed to read system instructions from {:?}: {}",
+                    dir, e
+                ))
+            })?
         } else {
             String::new()
         };
@@ -331,10 +369,9 @@ impl RustbotApp {
         // Save system instructions
         let mut system_dir = base_dir.clone();
         system_dir.push("system");
-        std::fs::create_dir_all(&system_dir)
-            .map_err(|e| RustbotError::StorageError(
-                format!("Failed to create system directory: {}", e)
-            ))?;
+        std::fs::create_dir_all(&system_dir).map_err(|e| {
+            RustbotError::StorageError(format!("Failed to create system directory: {}", e))
+        })?;
 
         let system_current = system_dir.join("current");
 
@@ -342,17 +379,18 @@ impl RustbotApp {
         if system_current.exists() {
             let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
             let backup_path = system_dir.join(format!("backup_{}", timestamp));
-            std::fs::copy(&system_current, &backup_path)
-                .map_err(|e| RustbotError::StorageError(
-                    format!("Failed to create backup of system instructions: {}", e)
-                ))?;
+            std::fs::copy(&system_current, &backup_path).map_err(|e| {
+                RustbotError::StorageError(format!(
+                    "Failed to create backup of system instructions: {}",
+                    e
+                ))
+            })?;
         }
 
         // Write new current
-        std::fs::write(&system_current, &self.system_prompts.system_instructions)
-            .map_err(|e| RustbotError::StorageError(
-                format!("Failed to write system instructions: {}", e)
-            ))?;
+        std::fs::write(&system_current, &self.system_prompts.system_instructions).map_err(|e| {
+            RustbotError::StorageError(format!("Failed to write system instructions: {}", e))
+        })?;
 
         Ok(())
     }
@@ -369,30 +407,26 @@ impl RustbotApp {
             return Ok(TokenStats::default());
         }
 
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| RustbotError::StorageError(
-                format!("Failed to read token stats from {:?}: {}", path, e)
-            ))?;
+        let content = std::fs::read_to_string(&path).map_err(|e| {
+            RustbotError::StorageError(format!("Failed to read token stats from {:?}: {}", path, e))
+        })?;
 
-        let stats: TokenStats = serde_json::from_str(&content)
-            .map_err(|e| RustbotError::StorageError(
-                format!("Failed to parse token stats JSON: {}", e)
-            ))?;
+        let stats: TokenStats = serde_json::from_str(&content).map_err(|e| {
+            RustbotError::StorageError(format!("Failed to parse token stats JSON: {}", e))
+        })?;
 
         Ok(stats)
     }
 
     fn save_token_stats(&self) -> Result<()> {
         let path = Self::get_stats_file_path();
-        let content = serde_json::to_string_pretty(&self.token_stats)
-            .map_err(|e| RustbotError::StorageError(
-                format!("Failed to serialize token stats: {}", e)
-            ))?;
+        let content = serde_json::to_string_pretty(&self.token_stats).map_err(|e| {
+            RustbotError::StorageError(format!("Failed to serialize token stats: {}", e))
+        })?;
 
-        std::fs::write(&path, content)
-            .map_err(|e| RustbotError::StorageError(
-                format!("Failed to write token stats to {:?}: {}", path, e)
-            ))?;
+        std::fs::write(&path, content).map_err(|e| {
+            RustbotError::StorageError(format!("Failed to write token stats to {:?}: {}", path, e))
+        })?;
 
         Ok(())
     }
@@ -444,7 +478,8 @@ impl RustbotApp {
             .unwrap_or_else(|_| "unknown".to_string());
 
         // Get the primary agent's model
-        let model = self.agent_configs
+        let model = self
+            .agent_configs
             .iter()
             .find(|config| config.is_primary)
             .map(|config| config.model.as_str())
@@ -474,8 +509,11 @@ This information is provided automatically to give you context about the current
     }
 
     fn clear_conversation(&mut self) {
-        tracing::info!("🗑️  Clearing conversation - UI messages: {}, Event history: {}",
-            self.messages.len(), self.event_history.len());
+        tracing::info!(
+            "🗑️  Clearing conversation - UI messages: {}, Event history: {}",
+            self.messages.len(),
+            self.event_history.len()
+        );
 
         // Clear UI state
         self.messages.clear();
@@ -487,7 +525,12 @@ This information is provided automatically to give you context about the current
 
         // Clear API conversation history and publish event
         let api = Arc::clone(&self.api);
-        self.runtime.spawn(async move {
+        let runtime = self
+            .deps
+            .runtime
+            .as_ref()
+            .expect("Runtime is required for RustbotApp");
+        runtime.spawn(async move {
             let mut api_guard = api.lock().await;
             api_guard.clear_history();
         });
@@ -496,41 +539,50 @@ This information is provided automatically to give you context about the current
     fn reload_config(&mut self) {
         tracing::info!("🔄 Reloading Rustbot configuration...");
 
-        // Get API key from environment
-        let api_key = match std::env::var("OPENROUTER_API_KEY") {
-            Ok(key) => key,
-            Err(_) => {
-                tracing::error!("OPENROUTER_API_KEY not found - cannot reload");
-                return;
-            }
-        };
+        // Get runtime from dependencies
+        let runtime = self
+            .deps
+            .runtime
+            .as_ref()
+            .expect("Runtime is required for RustbotApp");
 
-        // Create fresh event bus
-        let event_bus = Arc::new(EventBus::new());
-        let event_rx = event_bus.subscribe();
-
-        // Create fresh LLM adapter
-        let llm_adapter: Arc<dyn LlmAdapter> = Arc::from(create_adapter(AdapterType::OpenRouter, api_key));
-
-        // Reload agents from JSON preset files
-        let agent_loader = agent::AgentLoader::new();
-        let agent_configs = agent_loader.load_all()
-            .unwrap_or_else(|e| {
-                tracing::warn!("Failed to load agents from presets: {}", e);
-                vec![AgentConfig::default_assistant()]
-            });
+        // Reload agents from config service
+        let agent_configs = runtime.block_on(async {
+            self.deps
+                .config
+                .load_agent_configs()
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to load agents from config service: {}", e);
+                    vec![AgentConfig::default_assistant()]
+                })
+        });
 
         tracing::info!("📋 Reloaded {} agents", agent_configs.len());
         for config in &agent_configs {
-            tracing::info!("   - {} (primary: {}, enabled: {})",
-                         config.id, config.is_primary, config.enabled);
+            tracing::info!(
+                "   - {} (primary: {}, enabled: {})",
+                config.id,
+                config.is_primary,
+                config.enabled
+            );
         }
+
+        // Get LLM adapter from dependencies
+        let llm_adapter = self
+            .deps
+            .llm_adapter
+            .as_ref()
+            .expect("LLM adapter is required for RustbotApp");
+
+        // Subscribe to fresh event bus events
+        let event_rx = self.deps.event_bus.subscribe();
 
         // Rebuild the API with reloaded agents
         let mut api_builder = api::RustbotApiBuilder::new()
-            .event_bus(Arc::clone(&event_bus))
-            .runtime(Arc::clone(&self.runtime))
-            .llm_adapter(Arc::clone(&llm_adapter))
+            .event_bus(Arc::clone(&self.deps.event_bus))
+            .runtime(Arc::clone(runtime))
+            .llm_adapter(Arc::clone(llm_adapter))
             .max_history_size(20)
             .system_instructions(self.system_prompts.system_instructions.clone());
 
@@ -601,7 +653,8 @@ This information is provided automatically to give you context about the current
 
         // Look for base64 SVG images: ![...](data:image/svg+xml;base64,...)
         use regex::Regex;
-        let base64_img_pattern = Regex::new(r#"!\[([^\]]*)\]\(data:image/svg\+xml;base64,([A-Za-z0-9+/=]+)\)"#).unwrap();
+        let base64_img_pattern =
+            Regex::new(r#"!\[([^\]]*)\]\(data:image/svg\+xml;base64,([A-Za-z0-9+/=]+)\)"#).unwrap();
 
         // Validate and fix any base64 SVG images
         for cap in base64_img_pattern.captures_iter(markdown) {
@@ -610,9 +663,15 @@ This information is provided automatically to give you context about the current
                 // Try to decode the base64 to verify it's valid
                 if let Ok(svg_bytes) = BASE64.decode(base64_data.as_str()) {
                     // Verify it's actually SVG
-                    if let Ok(svg_str) = std::str::from_utf8(&svg_bytes[..svg_bytes.len().min(100)]) {
-                        if svg_str.trim_start().starts_with("<?xml") || svg_str.trim_start().starts_with("<svg") {
-                            tracing::debug!("✓ Found valid base64 SVG image in markdown ({} bytes)", svg_bytes.len());
+                    if let Ok(svg_str) = std::str::from_utf8(&svg_bytes[..svg_bytes.len().min(100)])
+                    {
+                        if svg_str.trim_start().starts_with("<?xml")
+                            || svg_str.trim_start().starts_with("<svg")
+                        {
+                            tracing::debug!(
+                                "✓ Found valid base64 SVG image in markdown ({} bytes)",
+                                svg_bytes.len()
+                            );
                             // It's valid, keep it as-is
                             continue;
                         }
@@ -630,7 +689,12 @@ This information is provided automatically to give you context about the current
         }
 
         let renderer = Arc::clone(&self.mermaid_renderer);
-        let runtime = Arc::clone(&self.runtime);
+        let runtime = Arc::clone(
+            self.deps
+                .runtime
+                .as_ref()
+                .expect("Runtime is required for RustbotApp"),
+        );
 
         // Process blocks in reverse order to maintain correct indices
         for (start, end, code) in blocks.iter().rev() {
@@ -639,7 +703,9 @@ This information is provided automatically to give you context about the current
                 if let Ok(mut r) = renderer.try_lock() {
                     r.render_to_png(code).await
                 } else {
-                    Err(mermaid::MermaidError::EncodingError("Renderer locked".to_string()))
+                    Err(mermaid::MermaidError::EncodingError(
+                        "Renderer locked".to_string(),
+                    ))
                 }
             });
 
@@ -657,7 +723,10 @@ This information is provided automatically to give you context about the current
 
                     result.replace_range(*start..*end, &replacement);
 
-                    tracing::debug!("✓ Rendered mermaid diagram ({} bytes JPEG)", image_bytes.len());
+                    tracing::debug!(
+                        "✓ Rendered mermaid diagram ({} bytes JPEG)",
+                        image_bytes.len()
+                    );
                 }
                 Err(e) => {
                     // On error, leave the code block as-is (graceful degradation)
@@ -706,10 +775,13 @@ This information is provided automatically to give you context about the current
 
         // Update context tracker
         let system_content_tokens = self.estimate_tokens(&self.generate_system_context());
-        let conversation_total_tokens: u32 = self.messages.iter()
+        let conversation_total_tokens: u32 = self
+            .messages
+            .iter()
             .map(|msg| self.estimate_tokens(&msg.content))
             .sum();
-        self.context_tracker.update_counts(system_content_tokens, conversation_total_tokens);
+        self.context_tracker
+            .update_counts(system_content_tokens, conversation_total_tokens);
 
         // Call send_message - we use a channel to communicate the result back
         let message = self.message_input.clone();
@@ -719,7 +791,12 @@ This information is provided automatically to give you context about the current
         // Spawn async task using tokio runtime
         // This is the proper way to call async code from sync UI thread
         let api = Arc::clone(&self.api);
-        self.runtime.spawn(async move {
+        let runtime = self
+            .deps
+            .runtime
+            .as_ref()
+            .expect("Runtime is required for RustbotApp");
+        runtime.spawn(async move {
             // Lock the API, call send_message, then release lock
             let mut api_guard = api.lock().await;
             let result = api_guard.send_message(&message).await;
@@ -760,10 +837,13 @@ This information is provided automatically to give you context about the current
 
         // Update context tracker
         let system_content_tokens = self.estimate_tokens(&self.generate_system_context());
-        let conversation_total_tokens: u32 = self.messages.iter()
+        let conversation_total_tokens: u32 = self
+            .messages
+            .iter()
             .map(|msg| self.estimate_tokens(&msg.content))
             .sum();
-        self.context_tracker.update_counts(system_content_tokens, conversation_total_tokens);
+        self.context_tracker
+            .update_counts(system_content_tokens, conversation_total_tokens);
 
         // Spawn async task to send message
         let (tx, rx) = mpsc::unbounded_channel();
@@ -771,14 +851,18 @@ This information is provided automatically to give you context about the current
 
         // Spawn async task using tokio runtime
         let api = Arc::clone(&self.api);
-        self.runtime.spawn(async move {
+        let runtime = self
+            .deps
+            .runtime
+            .as_ref()
+            .expect("Runtime is required for RustbotApp");
+        runtime.spawn(async move {
             // Lock the API, call send_message, then release lock
             let mut api_guard = api.lock().await;
             let result = api_guard.send_message(&content).await;
             let _ = tx.send(result);
         });
     }
-
 }
 
 impl eframe::App for RustbotApp {
@@ -833,9 +917,7 @@ impl eframe::App for RustbotApp {
                             AgentStatus::ExecutingTool(ref tool_name) => {
                                 Some(format!("🔧 Executing tool: {}", tool_name))
                             }
-                            AgentStatus::Thinking => {
-                                Some("🤔 Thinking...".to_string())
-                            }
+                            AgentStatus::Thinking => Some("🤔 Thinking...".to_string()),
                             AgentStatus::Responding => {
                                 Some("💬 Generating response...".to_string())
                             }
@@ -849,7 +931,9 @@ impl eframe::App for RustbotApp {
                                 // DON'T call self.clear_conversation() here - that would create an infinite loop!
                                 // The UI already cleared its state when the Clear button was clicked.
                                 // This event is for other components (agents, etc.) to know the conversation was cleared.
-                                tracing::debug!("ClearConversation event received (already handled)");
+                                tracing::debug!(
+                                    "ClearConversation event received (already handled)"
+                                );
                             }
                             SystemCommand::SaveState => {
                                 tracing::info!("Save state command received");
@@ -915,7 +999,10 @@ impl eframe::App for RustbotApp {
 
                             // Add error message visible to user
                             if let Some(last_msg) = self.messages.last_mut() {
-                                last_msg.content = format!("⚠️ Error: {}\n\nPlease try again or check your connection.", e);
+                                last_msg.content = format!(
+                                    "⚠️ Error: {}\n\nPlease try again or check your connection.",
+                                    e
+                                );
                             }
 
                             self.pending_agent_result = None; // Clear the pending result
@@ -934,7 +1021,9 @@ impl eframe::App for RustbotApp {
 
                     // Add error message
                     if let Some(last_msg) = self.messages.last_mut() {
-                        last_msg.content = "⚠️ Error: Agent processing failed unexpectedly.\n\nPlease try again.".to_string();
+                        last_msg.content =
+                            "⚠️ Error: Agent processing failed unexpectedly.\n\nPlease try again."
+                                .to_string();
                     }
 
                     ctx.request_repaint();
@@ -980,7 +1069,12 @@ impl eframe::App for RustbotApp {
                 // This ensures the next message will have this response as context
                 let api = Arc::clone(&self.api);
                 let response = self.current_response.clone();
-                self.runtime.spawn(async move {
+                let runtime = self
+                    .deps
+                    .runtime
+                    .as_ref()
+                    .expect("Runtime is required for RustbotApp");
+                runtime.spawn(async move {
                     let mut api_guard = api.lock().await;
                     api_guard.add_assistant_response(response);
                 });
@@ -994,12 +1088,28 @@ impl eframe::App for RustbotApp {
         // Set custom theme with larger fonts
         let mut style = (*ctx.style()).clone();
         style.text_styles = [
-            (egui::TextStyle::Heading, egui::FontId::new(24.0, egui::FontFamily::Proportional)),
-            (egui::TextStyle::Body, egui::FontId::new(16.0, egui::FontFamily::Proportional)),
-            (egui::TextStyle::Button, egui::FontId::new(16.0, egui::FontFamily::Proportional)),
-            (egui::TextStyle::Small, egui::FontId::new(14.0, egui::FontFamily::Proportional)),
-            (egui::TextStyle::Monospace, egui::FontId::new(14.0, egui::FontFamily::Proportional)),
-        ].into();
+            (
+                egui::TextStyle::Heading,
+                egui::FontId::new(24.0, egui::FontFamily::Proportional),
+            ),
+            (
+                egui::TextStyle::Body,
+                egui::FontId::new(16.0, egui::FontFamily::Proportional),
+            ),
+            (
+                egui::TextStyle::Button,
+                egui::FontId::new(16.0, egui::FontFamily::Proportional),
+            ),
+            (
+                egui::TextStyle::Small,
+                egui::FontId::new(14.0, egui::FontFamily::Proportional),
+            ),
+            (
+                egui::TextStyle::Monospace,
+                egui::FontId::new(14.0, egui::FontFamily::Proportional),
+            ),
+        ]
+        .into();
 
         // Custom light color scheme
         let mut visuals = egui::Visuals::light();
@@ -1025,11 +1135,14 @@ impl eframe::App for RustbotApp {
                         // Sidebar header with toggle
                         ui.horizontal(|ui| {
                             ui.heading("Menu");
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.button(icons::CARET_LEFT).clicked() {
-                                    self.sidebar_open = false;
-                                }
-                            });
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui.button(icons::CARET_LEFT).clicked() {
+                                        self.sidebar_open = false;
+                                    }
+                                },
+                            );
                         });
                         ui.separator();
 
@@ -1037,12 +1150,10 @@ impl eframe::App for RustbotApp {
                         ui.add_space(10.0);
 
                         ui.horizontal(|ui| {
-                            let chat_button = ui.add(
-                                egui::SelectableLabel::new(
-                                    self.current_view == AppView::Chat,
-                                    format!("{} Chat", icons::CHATS_CIRCLE)
-                                )
-                            );
+                            let chat_button = ui.add(egui::SelectableLabel::new(
+                                self.current_view == AppView::Chat,
+                                format!("{} Chat", icons::CHATS_CIRCLE),
+                            ));
                             if chat_button.clicked() {
                                 self.current_view = AppView::Chat;
                             }
@@ -1051,12 +1162,10 @@ impl eframe::App for RustbotApp {
                         ui.add_space(5.0);
 
                         ui.horizontal(|ui| {
-                            let settings_button = ui.add(
-                                egui::SelectableLabel::new(
-                                    self.current_view == AppView::Settings,
-                                    format!("{} Settings", icons::GEAR)
-                                )
-                            );
+                            let settings_button = ui.add(egui::SelectableLabel::new(
+                                self.current_view == AppView::Settings,
+                                format!("{} Settings", icons::GEAR),
+                            ));
                             if settings_button.clicked() {
                                 self.current_view = AppView::Settings;
                             }
@@ -1066,12 +1175,10 @@ impl eframe::App for RustbotApp {
 
                         // Events button
                         ui.horizontal(|ui| {
-                            let events_button = ui.add(
-                                egui::SelectableLabel::new(
-                                    self.current_view == AppView::Events,
-                                    format!("{} Events", icons::LIST_BULLETS)
-                                )
-                            );
+                            let events_button = ui.add(egui::SelectableLabel::new(
+                                self.current_view == AppView::Events,
+                                format!("{} Events", icons::LIST_BULLETS),
+                            ));
                             if events_button.clicked() {
                                 self.current_view = AppView::Events;
                             }
@@ -1081,12 +1188,10 @@ impl eframe::App for RustbotApp {
 
                         // Extensions button (was Marketplace)
                         ui.horizontal(|ui| {
-                            let extensions_button = ui.add(
-                                egui::SelectableLabel::new(
-                                    self.current_view == AppView::Extensions,
-                                    format!("{} Extensions", icons::PUZZLE_PIECE)
-                                )
-                            );
+                            let extensions_button = ui.add(egui::SelectableLabel::new(
+                                self.current_view == AppView::Extensions,
+                                format!("{} Extensions", icons::PUZZLE_PIECE),
+                            ));
                             if extensions_button.clicked() {
                                 self.current_view = AppView::Extensions;
                             }
@@ -1096,12 +1201,17 @@ impl eframe::App for RustbotApp {
 
                         // Reload configuration button
                         ui.horizontal(|ui| {
-                            if ui.button(format!("{} Reload Config", icons::ARROW_CLOCKWISE)).clicked() {
+                            if ui
+                                .button(format!("{} Reload Config", icons::ARROW_CLOCKWISE))
+                                .clicked()
+                            {
                                 self.reload_config();
                             }
-                            ui.label(egui::RichText::new("⌘R")
-                                .size(12.0)
-                                .color(egui::Color32::from_rgb(120, 120, 120)));
+                            ui.label(
+                                egui::RichText::new("⌘R")
+                                    .size(12.0)
+                                    .color(egui::Color32::from_rgb(120, 120, 120)),
+                            );
                         });
 
                         ui.add_space(20.0);
@@ -1111,11 +1221,21 @@ impl eframe::App for RustbotApp {
                         // Event Visualizer section
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new("Event Flow").strong().size(14.0));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.small_button(if self.show_event_visualizer { "▼" } else { "▶" }).clicked() {
-                                    self.show_event_visualizer = !self.show_event_visualizer;
-                                }
-                            });
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui
+                                        .small_button(if self.show_event_visualizer {
+                                            "▼"
+                                        } else {
+                                            "▶"
+                                        })
+                                        .clicked()
+                                    {
+                                        self.show_event_visualizer = !self.show_event_visualizer;
+                                    }
+                                },
+                            );
                         });
 
                         if self.show_event_visualizer {
@@ -1126,9 +1246,11 @@ impl eframe::App for RustbotApp {
                                 .auto_shrink([false; 2])
                                 .show(ui, |ui| {
                                     if self.event_history.is_empty() {
-                                        ui.label(egui::RichText::new("No events yet")
-                                            .size(11.0)
-                                            .color(egui::Color32::from_rgb(120, 120, 120)));
+                                        ui.label(
+                                            egui::RichText::new("No events yet")
+                                                .size(11.0)
+                                                .color(egui::Color32::from_rgb(120, 120, 120)),
+                                        );
                                     } else {
                                         // Show most recent events first
                                         for event in self.event_history.iter().rev().take(10) {
@@ -1137,11 +1259,26 @@ impl eframe::App for RustbotApp {
 
                                                 // Event kind with color coding
                                                 let (color, icon) = match event.kind.as_str() {
-                                                    "UserMessage" => (egui::Color32::from_rgb(100, 150, 255), "📤"),
-                                                    "AgentMessage" => (egui::Color32::from_rgb(100, 255, 150), "📥"),
-                                                    "StatusChange" => (egui::Color32::from_rgb(255, 200, 100), "🔄"),
-                                                    "SystemCommand" => (egui::Color32::from_rgb(255, 100, 100), "⚙️"),
-                                                    _ => (egui::Color32::from_rgb(150, 150, 150), "📨"),
+                                                    "UserMessage" => (
+                                                        egui::Color32::from_rgb(100, 150, 255),
+                                                        "📤",
+                                                    ),
+                                                    "AgentMessage" => (
+                                                        egui::Color32::from_rgb(100, 255, 150),
+                                                        "📥",
+                                                    ),
+                                                    "StatusChange" => (
+                                                        egui::Color32::from_rgb(255, 200, 100),
+                                                        "🔄",
+                                                    ),
+                                                    "SystemCommand" => (
+                                                        egui::Color32::from_rgb(255, 100, 100),
+                                                        "⚙️",
+                                                    ),
+                                                    _ => (
+                                                        egui::Color32::from_rgb(150, 150, 150),
+                                                        "📨",
+                                                    ),
                                                 };
 
                                                 ui.horizontal(|ui| {
@@ -1149,22 +1286,30 @@ impl eframe::App for RustbotApp {
                                                     ui.label(
                                                         egui::RichText::new(&event.kind)
                                                             .size(10.0)
-                                                            .color(color)
+                                                            .color(color),
                                                     );
                                                 });
 
                                                 // Source → Destination
                                                 ui.label(
-                                                    egui::RichText::new(format!("{} → {}", event.source, event.destination))
-                                                        .size(9.0)
-                                                        .color(egui::Color32::from_rgb(150, 150, 150))
+                                                    egui::RichText::new(format!(
+                                                        "{} → {}",
+                                                        event.source, event.destination
+                                                    ))
+                                                    .size(9.0)
+                                                    .color(egui::Color32::from_rgb(150, 150, 150)),
                                                 );
 
                                                 // Timestamp
                                                 ui.label(
-                                                    egui::RichText::new(event.timestamp.format("%H:%M:%S").to_string())
-                                                        .size(8.0)
-                                                        .color(egui::Color32::from_rgb(100, 100, 100))
+                                                    egui::RichText::new(
+                                                        event
+                                                            .timestamp
+                                                            .format("%H:%M:%S")
+                                                            .to_string(),
+                                                    )
+                                                    .size(8.0)
+                                                    .color(egui::Color32::from_rgb(100, 100, 100)),
                                                 );
                                             });
                                             ui.add_space(3.0);
@@ -1189,9 +1334,11 @@ impl eframe::App for RustbotApp {
 
                     ui.heading("Rustbot - AI Assistant");
                     ui.add_space(10.0);
-                    ui.label(egui::RichText::new(version::version_string())
-                        .size(14.0)
-                        .color(egui::Color32::from_rgb(120, 120, 120)));
+                    ui.label(
+                        egui::RichText::new(version::version_string())
+                            .size(14.0)
+                            .color(egui::Color32::from_rgb(120, 120, 120)),
+                    );
                 });
                 ui.separator();
 
