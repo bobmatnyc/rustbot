@@ -39,10 +39,12 @@
 
 use eframe::egui;
 use egui_phosphor::regular as icons;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 
+use crate::mcp::extensions::{ExtensionInstaller, ExtensionRegistry};
 use crate::mcp::marketplace::{MarketplaceClient, McpRegistry, McpServerWrapper};
 
 /// Async task result for server list fetch
@@ -104,6 +106,18 @@ pub struct MarketplaceView {
 
     /// Sender for async fetch results (cloned for each async task)
     fetch_tx: mpsc::UnboundedSender<FetchResult>,
+
+    /// Extension registry for tracking installations
+    extension_registry: ExtensionRegistry,
+
+    /// Extension installer
+    extension_installer: ExtensionInstaller,
+
+    /// Path to extension registry file
+    registry_path: PathBuf,
+
+    /// Installation status message
+    install_message: Option<(String, bool)>, // (message, is_error)
 }
 
 impl MarketplaceView {
@@ -113,6 +127,21 @@ impl MarketplaceView {
     /// * `runtime` - Tokio runtime handle for spawning async tasks
     pub fn new(runtime: Handle) -> Self {
         let (fetch_tx, fetch_rx) = mpsc::unbounded_channel();
+
+        // Setup extension paths
+        let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        let extensions_dir = home_dir.join(".rustbot").join("extensions");
+        let registry_path = extensions_dir.join("registry.json");
+        let install_dir = extensions_dir.join("bin");
+
+        // Load or create extension registry
+        let extension_registry = ExtensionRegistry::load(&registry_path)
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to load extension registry: {}. Creating new.", e);
+                ExtensionRegistry::new()
+            });
+
+        let extension_installer = ExtensionInstaller::new(install_dir);
 
         let mut view = Self {
             client: Arc::new(MarketplaceClient::new()),
@@ -130,6 +159,10 @@ impl MarketplaceView {
             next_cursor: None,
             fetch_rx,
             fetch_tx,
+            extension_registry,
+            extension_installer,
+            registry_path,
+            install_message: None,
         };
 
         // Trigger initial load
@@ -540,11 +573,13 @@ impl MarketplaceView {
     }
 
     /// Render server details (right column)
-    fn render_server_details(&self, ui: &mut egui::Ui) {
+    fn render_server_details(&mut self, ui: &mut egui::Ui) {
         ui.heading("Server Details");
 
         if let Some(idx) = self.selected_server {
-            if let Some(wrapper) = self.servers.get(idx) {
+            // Clone wrapper to avoid borrowing issues when calling install_extension
+            if let Some(wrapper_ref) = self.servers.get(idx) {
+                let wrapper = wrapper_ref.clone();
                 let server = &wrapper.server;
                 let is_official = wrapper.meta.official.status == "active";
 
@@ -629,6 +664,33 @@ impl MarketplaceView {
 
                 ui.add_space(20.0);
 
+                // Installation status message
+                if let Some((message, is_error)) = &self.install_message {
+                    let color = if *is_error {
+                        egui::Color32::from_rgb(200, 80, 80)
+                    } else {
+                        egui::Color32::from_rgb(60, 150, 60)
+                    };
+                    ui.label(egui::RichText::new(message).color(color));
+                    ui.add_space(10.0);
+                }
+
+                // Install extension button
+                let is_installed = self.extension_registry.get(&server.name).is_some();
+                let install_button_text = if is_installed {
+                    format!("{} Installed", icons::CHECK_CIRCLE)
+                } else {
+                    format!("{} Install Extension", icons::DOWNLOAD_SIMPLE)
+                };
+
+                if ui.button(install_button_text).clicked() {
+                    if !is_installed {
+                        self.install_extension(&wrapper);
+                    }
+                }
+
+                ui.add_space(10.0);
+
                 // Copy config button
                 if ui
                     .button(format!(
@@ -637,7 +699,7 @@ impl MarketplaceView {
                     ))
                     .clicked()
                 {
-                    let config = self.generate_config_snippet(wrapper);
+                    let config = self.generate_config_snippet(&wrapper);
                     ui.output_mut(|o| o.copied_text = config);
                 }
 
@@ -751,6 +813,50 @@ impl MarketplaceView {
     /// Calculate total pages
     fn total_pages(&self) -> usize {
         (self.total_servers + self.servers_per_page - 1) / self.servers_per_page
+    }
+
+    /// Install an extension from a marketplace server
+    ///
+    /// Creates an installed extension entry in the registry with MCP configuration.
+    /// The extension is disabled by default and requires user configuration (env vars, etc.)
+    fn install_extension(&mut self, wrapper: &McpServerWrapper) {
+        let server = &wrapper.server;
+
+        // Try to install the extension
+        match self.extension_installer.install_from_listing(server, None) {
+            Ok(extension) => {
+                // Add to registry
+                self.extension_registry.install(extension);
+
+                // Save registry
+                match self.extension_registry.save(&self.registry_path) {
+                    Ok(_) => {
+                        self.install_message = Some((
+                            format!(
+                                "✓ Successfully installed '{}'. Configure in Extensions → Installed.",
+                                server.name
+                            ),
+                            false,
+                        ));
+                        tracing::info!("Installed extension: {}", server.name);
+                    }
+                    Err(e) => {
+                        self.install_message = Some((
+                            format!("✗ Failed to save registry: {}", e),
+                            true,
+                        ));
+                        tracing::error!("Failed to save extension registry: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                self.install_message = Some((
+                    format!("✗ Installation failed: {}", e),
+                    true,
+                ));
+                tracing::error!("Failed to install extension '{}': {}", server.name, e);
+            }
+        }
     }
 }
 
