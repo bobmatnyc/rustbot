@@ -73,7 +73,9 @@ pub struct SystemPrompts {
 impl Default for SystemPrompts {
     fn default() -> Self {
         Self {
-            system_instructions: "You are a helpful AI assistant.".to_string(),
+            system_instructions: "You are a helpful AI assistant. \
+Use the provided system context to personalize your responses when appropriate. \
+The user's name, email, time, and location are provided for context.".to_string(),
         }
     }
 }

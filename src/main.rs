@@ -54,25 +54,11 @@ fn main() -> std::result::Result<(), eframe::Error> {
     }
 
     // Get API key with proper error handling to avoid panic in FFI boundary
-    let api_key = match std::env::var("OPENROUTER_API_KEY") {
-        Ok(key) => key,
-        Err(_) => {
-            // Log error for debugging
-            tracing::error!("OPENROUTER_API_KEY not found in environment");
-            tracing::error!(
-                "Please ensure .env.local file exists with OPENROUTER_API_KEY=your_key"
-            );
-
-            // Display error message to user and exit gracefully
-            eprintln!("\n❌ ERROR: Missing OPENROUTER_API_KEY environment variable\n");
-            eprintln!("Please create a .env.local file in the project directory with:");
-            eprintln!("OPENROUTER_API_KEY=your_api_key_here\n");
-            eprintln!("Get your API key from: https://openrouter.ai/keys\n");
-
-            // Exit gracefully instead of panicking in FFI boundary
-            std::process::exit(1);
-        }
-    };
+    // If not found, we'll show setup wizard instead of exiting
+    let api_key = std::env::var("OPENROUTER_API_KEY").unwrap_or_else(|_| {
+        tracing::warn!("OPENROUTER_API_KEY not found - will show setup wizard");
+        String::new()
+    });
 
     // Build dependencies using AppBuilder
     let deps = tokio::runtime::Runtime::new()
@@ -202,6 +188,27 @@ struct RustbotApp {
 
     // Mermaid diagram rendering
     mermaid_renderer: Arc<Mutex<mermaid::MermaidRenderer>>,
+
+    // Splash screen state
+    show_splash: bool,
+    splash_start_time: Option<std::time::Instant>,
+
+    // Setup wizard state
+    setup_wizard_active: bool,
+    setup_wizard_step: SetupWizardStep,
+    setup_name: String,
+    setup_email: String,
+    setup_api_key: String,
+}
+
+/// Setup wizard flow steps
+#[derive(Debug, Clone, PartialEq)]
+enum SetupWizardStep {
+    Welcome,
+    EnterName,
+    EnterEmail,
+    EnterApiKey,
+    Complete,
 }
 
 impl RustbotApp {
@@ -293,6 +300,14 @@ impl RustbotApp {
         // Create mermaid renderer
         let mermaid_renderer = Arc::new(Mutex::new(mermaid::MermaidRenderer::new()));
 
+        // Check if this is first run (no profile exists and/or no API key in env)
+        let profile_exists = runtime.block_on(async {
+            let profile = deps.storage.load_user_profile().await.unwrap_or_default();
+            !profile.name.is_empty() || !profile.email.is_empty()
+        });
+
+        let setup_wizard_active = !profile_exists || api_key.is_empty();
+
         Self {
             deps,
             api: Arc::new(Mutex::new(api)),
@@ -326,6 +341,13 @@ impl RustbotApp {
             uninstall_message: None,
             markdown_cache: CommonMarkCache::default(),
             mermaid_renderer,
+            show_splash: true,
+            splash_start_time: Some(std::time::Instant::now()),
+            setup_wizard_active,
+            setup_wizard_step: SetupWizardStep::Welcome,
+            setup_name: String::new(),
+            setup_email: String::new(),
+            setup_api_key: api_key.clone(),
         }
     }
 
@@ -499,6 +521,39 @@ impl RustbotApp {
             .map(|config| config.model.as_str())
             .unwrap_or("unknown");
 
+        // Load user profile synchronously (blocking on async)
+        let profile = if let Some(runtime) = &self.deps.runtime {
+            runtime.block_on(async {
+                self.deps
+                    .storage
+                    .load_user_profile()
+                    .await
+                    .unwrap_or_default()
+            })
+        } else {
+            services::traits::UserProfile::default()
+        };
+
+        // Build user profile section if available
+        let user_profile_section = if !profile.name.is_empty() || !profile.email.is_empty() {
+            let mut section = String::new();
+            if !profile.name.is_empty() {
+                section.push_str(&format!("\n**User Name**: {}", profile.name));
+            }
+            if !profile.email.is_empty() {
+                section.push_str(&format!("\n**User Email**: {}", profile.email));
+            }
+            if let Some(ref timezone) = profile.timezone {
+                section.push_str(&format!("\n**User Timezone**: {}", timezone));
+            }
+            if let Some(ref location) = profile.location {
+                section.push_str(&format!("\n**User Location**: {}", location));
+            }
+            section
+        } else {
+            String::new()
+        };
+
         // Build the system context
         format!(
             r#"## System Context
@@ -508,7 +563,7 @@ impl RustbotApp {
 **Application**: Rustbot v{}
 **Operating System**: {} ({})
 **Hostname**: {}
-**User**: {}
+**User**: {}{}
 
 This information is provided automatically to give you context about the current system environment."#,
             datetime,
@@ -518,7 +573,8 @@ This information is provided automatically to give you context about the current
             os,
             arch,
             hostname,
-            user
+            user,
+            user_profile_section
         )
     }
 
@@ -821,6 +877,167 @@ This information is provided automatically to give you context about the current
         self.message_input.clear();
     }
 
+    /// Render fullscreen splash screen with logo
+    fn render_splash_screen(&self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(ui.available_height() * 0.35);
+
+                // Logo
+                let logo = egui::Image::new(egui::include_image!("../assets/rustbot-icon.png"));
+                ui.add(logo.fit_to_exact_size(egui::vec2(200.0, 200.0)));
+
+                ui.add_space(30.0);
+
+                // Title
+                ui.heading(egui::RichText::new("Rustbot").size(48.0).strong());
+
+                ui.add_space(10.0);
+                ui.label(egui::RichText::new("AI Assistant").size(24.0));
+
+                ui.add_space(40.0);
+
+                // Loading animation
+                ui.spinner();
+            });
+        });
+    }
+
+    /// Render setup wizard dialog
+    fn render_setup_wizard(&mut self, ctx: &egui::Context) {
+        egui::Window::new("Welcome to Rustbot!")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .default_width(500.0)
+            .show(ctx, |ui| {
+                ui.add_space(20.0);
+
+                match self.setup_wizard_step {
+                    SetupWizardStep::Welcome => {
+                        ui.vertical_centered(|ui| {
+                            let logo =
+                                egui::Image::new(egui::include_image!("../assets/rustbot-icon.png"));
+                            ui.add(logo.fit_to_exact_size(egui::vec2(100.0, 100.0)));
+
+                            ui.add_space(20.0);
+                            ui.heading("Welcome to Rustbot!");
+                            ui.add_space(10.0);
+                            ui.label("Let's get you set up in just a few steps.");
+
+                            ui.add_space(30.0);
+                            if ui.button("Get Started").clicked() {
+                                self.setup_wizard_step = SetupWizardStep::EnterName;
+                            }
+                        });
+                    }
+
+                    SetupWizardStep::EnterName => {
+                        ui.heading("What's your name?");
+                        ui.add_space(10.0);
+                        ui.label("This helps personalize your experience.");
+                        ui.add_space(20.0);
+
+                        ui.horizontal(|ui| {
+                            ui.label("Name:");
+                            ui.text_edit_singleline(&mut self.setup_name);
+                        });
+
+                        ui.add_space(20.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("Next").clicked() && !self.setup_name.trim().is_empty() {
+                                self.setup_wizard_step = SetupWizardStep::EnterEmail;
+                            }
+                        });
+                    }
+
+                    SetupWizardStep::EnterEmail => {
+                        ui.heading("What's your email?");
+                        ui.add_space(10.0);
+                        ui.label("Optional, but helps with context.");
+                        ui.add_space(20.0);
+
+                        ui.horizontal(|ui| {
+                            ui.label("Email:");
+                            ui.text_edit_singleline(&mut self.setup_email);
+                        });
+
+                        ui.add_space(20.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("Back").clicked() {
+                                self.setup_wizard_step = SetupWizardStep::EnterName;
+                            }
+                            if ui.button("Next").clicked() {
+                                self.setup_wizard_step = SetupWizardStep::EnterApiKey;
+                            }
+                        });
+                    }
+
+                    SetupWizardStep::EnterApiKey => {
+                        ui.heading("OpenRouter API Key");
+                        ui.add_space(10.0);
+                        ui.label("Get your free API key from:");
+                        ui.hyperlink("https://openrouter.ai/keys");
+                        ui.add_space(20.0);
+
+                        ui.horizontal(|ui| {
+                            ui.label("API Key:");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.setup_api_key).password(true),
+                            );
+                        });
+
+                        ui.add_space(20.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("Back").clicked() {
+                                self.setup_wizard_step = SetupWizardStep::EnterEmail;
+                            }
+                            if ui.button("Finish Setup").clicked()
+                                && !self.setup_api_key.trim().is_empty()
+                            {
+                                self.save_setup_wizard_results();
+                                self.setup_wizard_step = SetupWizardStep::Complete;
+                                self.setup_wizard_active = false;
+                            }
+                        });
+                    }
+
+                    SetupWizardStep::Complete => {
+                        ui.vertical_centered(|ui| {
+                            ui.heading("All Set!");
+                            ui.add_space(10.0);
+                            ui.label("Rustbot is ready to use.");
+                        });
+                    }
+                }
+
+                ui.add_space(20.0);
+            });
+    }
+
+    /// Save setup wizard results to storage
+    fn save_setup_wizard_results(&self) {
+        // Save user profile
+        let profile = services::traits::UserProfile {
+            name: self.setup_name.clone(),
+            email: self.setup_email.clone(),
+            timezone: None,
+            location: None,
+        };
+
+        let storage = Arc::clone(&self.deps.storage);
+        if let Some(runtime) = &self.deps.runtime {
+            runtime.spawn(async move {
+                let _ = storage.save_user_profile(&profile).await;
+            });
+        }
+
+        // Save API key to .env.local
+        let env_path = std::path::PathBuf::from(".env.local");
+        let env_content = format!("OPENROUTER_API_KEY={}", self.setup_api_key);
+        let _ = std::fs::write(&env_path, env_content);
+    }
+
     fn handle_user_message_event(&mut self, _ctx: &egui::Context, content: String) {
         // Calculate input tokens
         let input_tokens = self.estimate_tokens(&content);
@@ -881,6 +1098,26 @@ This information is provided automatically to give you context about the current
 
 impl eframe::App for RustbotApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check splash screen timer (show for 2 seconds)
+        if self.show_splash {
+            if let Some(start) = self.splash_start_time {
+                if start.elapsed().as_secs() < 2 {
+                    self.render_splash_screen(ctx);
+                    ctx.request_repaint();
+                    return;
+                } else {
+                    self.show_splash = false;
+                    self.splash_start_time = None;
+                }
+            }
+        }
+
+        // Setup wizard check - show after splash
+        if self.setup_wizard_active {
+            self.render_setup_wizard(ctx);
+            return;
+        }
+
         // Process events from the event bus
         // Use a flag to track if we processed any events
         let mut events_processed = false;

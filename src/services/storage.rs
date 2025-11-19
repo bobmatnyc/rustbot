@@ -16,7 +16,7 @@
 // Extension Points: Can switch to SQLite or cloud storage by implementing
 // StorageService trait with a different adapter (no business logic changes).
 
-use super::traits::{FileSystem, StorageService, SystemPrompts, TokenStats};
+use super::traits::{FileSystem, StorageService, SystemPrompts, TokenStats, UserProfile};
 use crate::error::{Result, RustbotError};
 use async_trait::async_trait;
 use std::path::PathBuf;
@@ -63,6 +63,11 @@ impl FileStorageService {
     /// Get path to system prompts file
     fn system_prompts_path(&self) -> PathBuf {
         self.base_path.join("system_prompts.json")
+    }
+
+    /// Get path to user profile file
+    fn user_profile_path(&self) -> PathBuf {
+        self.base_path.join("profile.json")
     }
 
     /// Ensure base directory exists
@@ -124,6 +129,33 @@ impl StorageService for FileStorageService {
         let path = self.system_prompts_path();
         let content = serde_json::to_string_pretty(prompts).map_err(|e| {
             RustbotError::StorageError(format!("Failed to serialize system prompts: {}", e))
+        })?;
+
+        self.fs.write(&path, &content).await?;
+        Ok(())
+    }
+
+    async fn load_user_profile(&self) -> Result<UserProfile> {
+        let path = self.user_profile_path();
+
+        if !self.fs.exists(&path).await {
+            // Return default profile if file doesn't exist (first run)
+            return Ok(UserProfile::default());
+        }
+
+        let content = self.fs.read_to_string(&path).await?;
+
+        serde_json::from_str(&content).map_err(|e| {
+            RustbotError::StorageError(format!("Failed to deserialize user profile: {}", e))
+        })
+    }
+
+    async fn save_user_profile(&self, profile: &UserProfile) -> Result<()> {
+        self.ensure_base_dir().await?;
+
+        let path = self.user_profile_path();
+        let content = serde_json::to_string_pretty(profile).map_err(|e| {
+            RustbotError::StorageError(format!("Failed to serialize user profile: {}", e))
         })?;
 
         self.fs.write(&path, &content).await?;

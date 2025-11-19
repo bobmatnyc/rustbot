@@ -116,6 +116,22 @@ pub trait StorageService: Send + Sync {
     /// - Serialization errors
     /// - Write errors
     async fn save_system_prompts(&self, prompts: &SystemPrompts) -> Result<()>;
+
+    /// Load user profile from persistent storage
+    ///
+    /// Returns default profile if file doesn't exist.
+    ///
+    /// # Errors
+    /// - Deserialization errors
+    /// - Permission errors
+    async fn load_user_profile(&self) -> Result<UserProfile>;
+
+    /// Save user profile to persistent storage
+    ///
+    /// # Errors
+    /// - Serialization errors
+    /// - Write errors
+    async fn save_user_profile(&self, profile: &UserProfile) -> Result<()>;
 }
 
 /// Configuration service for application settings
@@ -239,6 +255,36 @@ impl Default for TokenStats {
             total_output_tokens: 0,
             total_cost: 0.0,
             last_updated: chrono::Utc::now(),
+        }
+    }
+}
+
+/// User profile information for personalization
+///
+/// Stores user details that can be used to personalize AI responses.
+/// This information is provided as context in system prompts.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UserProfile {
+    /// User's full name
+    pub name: String,
+
+    /// User's email address
+    pub email: String,
+
+    /// User's timezone (e.g., "America/Los_Angeles")
+    pub timezone: Option<String>,
+
+    /// User's location (e.g., "San Francisco, CA")
+    pub location: Option<String>,
+}
+
+impl Default for UserProfile {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            email: String::new(),
+            timezone: None,
+            location: None,
         }
     }
 }
