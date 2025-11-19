@@ -24,6 +24,7 @@ use llm::{create_adapter, AdapterType, LlmAdapter};
 use mcp::manager::McpPluginManager;
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, Mutex};
 use ui::icon::create_window_icon;
@@ -31,6 +32,109 @@ use ui::{
     AppView, ChatMessage, ContextTracker, ExtensionsView, MessageRole, PluginsView, SettingsView,
     SystemPrompts, TokenStats, VisualEvent,
 };
+
+/// Read a secret from 1Password using the CLI
+///
+/// # Arguments
+/// * `reference` - 1Password secret reference (format: `op://vault/item/field`)
+///
+/// # Returns
+/// * `Ok(String)` - The secret value
+/// * `Err(anyhow::Error)` - If reading fails
+///
+/// # Errors
+/// - 1Password CLI not installed
+/// - Not signed in to 1Password
+/// - Secret reference not found
+/// - Invalid reference format
+fn read_1password_secret(reference: &str) -> anyhow::Result<String> {
+    use anyhow::Context;
+
+    // Validate reference format
+    if !reference.starts_with("op://") {
+        anyhow::bail!(
+            "Invalid 1Password reference format: '{}'. Must start with 'op://'",
+            reference
+        );
+    }
+
+    // Execute `op read` command
+    let output = Command::new("op")
+        .arg("read")
+        .arg(reference)
+        .output()
+        .with_context(|| {
+            format!(
+                "Failed to execute 1Password CLI. Is it installed?\n\
+                 Install: brew install 1password-cli\n\
+                 Reference: {}",
+                reference
+            )
+        })?;
+
+    // Check if command succeeded
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // Provide helpful error messages based on common failures
+        if stderr.contains("not currently signed in") || stderr.contains("signed out") {
+            anyhow::bail!(
+                "Not signed in to 1Password. Run: op signin\n\
+                 Reference: {}",
+                reference
+            );
+        } else if stderr.contains("isn't an item") || stderr.contains("not found") {
+            anyhow::bail!(
+                "1Password secret not found: {}\n\
+                 Error: {}",
+                reference,
+                stderr.trim()
+            );
+        } else {
+            anyhow::bail!(
+                "Failed to read 1Password secret: {}\n\
+                 Error: {}",
+                reference,
+                stderr.trim()
+            );
+        }
+    }
+
+    // Parse output
+    let secret = String::from_utf8(output.stdout)
+        .with_context(|| format!("1Password returned invalid UTF-8 for: {}", reference))?
+        .trim()
+        .to_string();
+
+    // Ensure secret is not empty
+    if secret.is_empty() {
+        anyhow::bail!("1Password secret is empty: {}", reference);
+    }
+
+    Ok(secret)
+}
+
+/// Resolve API key from environment variable or 1Password reference
+///
+/// Supports two formats:
+/// 1. `op://vault/item/field` - 1Password secret reference
+/// 2. Plain API key - Returned as-is
+///
+/// # Arguments
+/// * `value` - The environment variable value to resolve
+///
+/// # Returns
+/// * `Ok(String)` - The resolved API key
+/// * `Err(anyhow::Error)` - If resolution fails
+fn resolve_api_key(value: &str) -> anyhow::Result<String> {
+    // If it's a 1Password reference, resolve it
+    if value.starts_with("op://") {
+        return read_1password_secret(value);
+    }
+
+    // Otherwise return as-is (plain API key)
+    Ok(value.to_string())
+}
 
 fn main() -> std::result::Result<(), eframe::Error> {
     // Initialize tracing for logging
@@ -55,10 +159,35 @@ fn main() -> std::result::Result<(), eframe::Error> {
 
     // Get API key with proper error handling to avoid panic in FFI boundary
     // If not found, we'll show setup wizard instead of exiting
-    let api_key = std::env::var("OPENROUTER_API_KEY").unwrap_or_else(|_| {
-        tracing::warn!("OPENROUTER_API_KEY not found - will show setup wizard");
-        String::new()
-    });
+    // Also resolve 1Password references (op://...) if present
+    let api_key = match std::env::var("OPENROUTER_API_KEY") {
+        Ok(key_ref) => {
+            // Try to resolve the key (handles both plain keys and 1Password references)
+            match resolve_api_key(&key_ref) {
+                Ok(resolved_key) => {
+                    tracing::info!("✓ API key loaded successfully");
+                    resolved_key
+                }
+                Err(e) => {
+                    // Log error but don't exit - we'll show setup wizard instead
+                    tracing::error!("Failed to resolve API key: {}", e);
+                    eprintln!("\n❌ ERROR: Failed to resolve OPENROUTER_API_KEY");
+                    eprintln!("\nError details: {}", e);
+                    eprintln!("\nPossible solutions:");
+                    eprintln!("  - If using 1Password: Ensure 1Password CLI is installed (brew install 1password-cli)");
+                    eprintln!("  - If using 1Password: Sign in with 'op signin'");
+                    eprintln!("  - If using 1Password: Verify the reference is correct (op://vault/item/field)");
+                    eprintln!("  - Or set a plain API key in .env.local");
+                    eprintln!("\nWill show setup wizard to configure API key...\n");
+                    String::new() // Empty string triggers setup wizard
+                }
+            }
+        }
+        Err(_) => {
+            tracing::warn!("OPENROUTER_API_KEY not found - will show setup wizard");
+            String::new()
+        }
+    };
 
     // Build dependencies using AppBuilder
     let deps = tokio::runtime::Runtime::new()

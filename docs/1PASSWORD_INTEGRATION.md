@@ -27,6 +27,47 @@ Rustbot now supports pulling secrets from 1Password using the `op://` reference 
 
 ## Usage
 
+### Main Application API Key (`.env.local`)
+
+**NEW**: The main `OPENROUTER_API_KEY` in `.env.local` now supports 1Password references!
+
+In your `.env.local` file:
+
+```bash
+# Instead of plain text:
+# OPENROUTER_API_KEY=sk-or-v1-abc123...
+
+# Use 1Password reference:
+OPENROUTER_API_KEY=op://Private/Rustbot/api_key
+```
+
+This is the recommended approach for securing your primary OpenRouter API key.
+
+**Setup**:
+1. Store your OpenRouter API key in 1Password:
+   - Vault: `Private` (or your choice)
+   - Item: `Rustbot`
+   - Field: `api_key`
+   - Value: Your `sk-or-v1-...` key
+
+2. Update `.env.local`:
+   ```bash
+   echo "OPENROUTER_API_KEY=op://Private/Rustbot/api_key" > .env.local
+   ```
+
+3. Test:
+   ```bash
+   # Verify 1Password can read it
+   op read "op://Private/Rustbot/api_key"
+
+   # Run Rustbot
+   cargo run
+   ```
+
+**Error Handling**: If the 1Password reference fails to resolve (CLI not installed, not signed in, or secret not found), Rustbot will:
+1. Display a helpful error message with troubleshooting steps
+2. Fall back to the setup wizard to manually enter an API key
+
 ### Agent Configuration
 
 In your agent JSON files (e.g., `agents/presets/my-agent.json`):
@@ -167,20 +208,50 @@ Error: "wrong_key" isn't an item in the "Rustbot" vault
 
 ### Modified Files
 
-1. **`src/agent/config.rs`**:
+1. **`src/main.rs`** (NEW):
+   - Added `read_1password_secret()` function (lines 50-114)
+   - Added `resolve_api_key()` helper (lines 129-137)
+   - Updated API key loading with 1Password support (lines 163-190)
+   - Setup wizard saves references as-is (already compatible)
+
+2. **`src/agent/config.rs`**:
    - Added `read_1password_secret()` function
    - Enhanced `resolve_env_var()` to check for `op://` prefix first
    - Maintains backward compatibility with `${VAR}` syntax
 
-2. **`src/mcp/config.rs`**:
+3. **`src/mcp/config.rs`**:
    - Added `read_1password_secret()` function
    - Enhanced `resolve_env_var()` with 1Password support
    - Added `${VAR:-default}` syntax support (previously missing)
 
 ### Architecture
 
+**Application Startup (main.rs)**:
 ```
-Agent/MCP Config Load
+main() startup
+        ↓
+Load .env.local
+        ↓
+Read OPENROUTER_API_KEY
+        ↓
+resolve_api_key(value)
+        ↓
+    [Check prefix]
+        ↓
+    op:// ?  →  read_1password_secret()
+        ↓                ↓
+    Plain key       Execute `op read`
+        ↓                ↓
+    Return key      Parse + return secret
+        ↓                ↓
+        └────────────────┘
+                ↓
+        Use for API calls
+```
+
+**Agent/MCP Config Load**:
+```
+Config Load
         ↓
 resolve_env_var(value)
         ↓
