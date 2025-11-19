@@ -24,6 +24,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use super::error::{McpError, Result};
 use super::extensions::McpConfigEntry;
@@ -478,26 +479,167 @@ impl McpConfig {
     }
 }
 
-/// Resolve environment variable reference
+/// Read a secret from 1Password using the CLI
 ///
-/// Pattern: ${VAR_NAME}
+/// Supports the `op://vault/item/field` reference format used by 1Password CLI.
 ///
-/// If the value starts with "${" and ends with "}", extracts the variable
-/// name and looks it up in the environment. Otherwise, returns the value as-is.
+/// # Arguments
+/// * `reference` - 1Password secret reference (e.g., "op://Private/API Keys/credential")
 ///
-/// Example:
-///     resolve_env_var("${API_KEY}") -> Ok("sk_12345...")
-///     resolve_env_var("literal-value") -> Ok("literal-value")
+/// # Returns
+/// * `Ok(String)` - The secret value from 1Password
+/// * `Err` - If `op` CLI is not installed, not authenticated, or reference is invalid
 ///
-/// Error Cases:
+/// # Example
+/// ```ignore
+/// let secret = read_1password_secret("op://Private/rustbot/api_key")?;
+/// ```
+///
+/// # Error Cases
+/// - `op` CLI not installed: Suggests installation via `brew install 1password-cli`
+/// - Not authenticated: Suggests running `op signin`
+/// - Invalid reference format: Must start with `op://`
+/// - Empty secret: 1Password returned empty value
+///
+/// # Requirements
+/// - 1Password CLI must be installed and available in PATH
+/// - User must be signed in: `op signin`
+/// - Secret reference must exist in user's 1Password account
+fn read_1password_secret(reference: &str) -> Result<String> {
+    // Validate reference format
+    if !reference.starts_with("op://") {
+        return Err(McpError::Config(format!(
+            "Invalid 1Password reference format: '{}'. Must start with 'op://'",
+            reference
+        )));
+    }
+
+    // Execute `op read` command
+    let output = Command::new("op")
+        .arg("read")
+        .arg(reference)
+        .output()
+        .map_err(|e| {
+            McpError::Config(format!(
+                "Failed to execute 1Password CLI: {}\n\
+                 Install: brew install 1password-cli\n\
+                 Reference: {}",
+                e, reference
+            ))
+        })?;
+
+    // Check if command succeeded
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // Provide helpful error messages based on common failures
+        if stderr.contains("not currently signed in") || stderr.contains("signed out") {
+            return Err(McpError::Config(format!(
+                "Not signed in to 1Password. Run: op signin\n\
+                 Reference: {}",
+                reference
+            )));
+        } else if stderr.contains("isn't an item") || stderr.contains("not found") {
+            return Err(McpError::Config(format!(
+                "1Password secret not found: {}\n\
+                 Error: {}",
+                reference,
+                stderr.trim()
+            )));
+        } else {
+            return Err(McpError::Config(format!(
+                "Failed to read 1Password secret: {}\n\
+                 Error: {}",
+                reference,
+                stderr.trim()
+            )));
+        }
+    }
+
+    // Parse output
+    let secret = String::from_utf8(output.stdout)
+        .map_err(|e| {
+            McpError::Config(format!(
+                "1Password returned invalid UTF-8 for: {}\nError: {}",
+                reference, e
+            ))
+        })?
+        .trim()
+        .to_string();
+
+    // Ensure secret is not empty
+    if secret.is_empty() {
+        return Err(McpError::Config(format!(
+            "1Password secret is empty: {}",
+            reference
+        )));
+    }
+
+    Ok(secret)
+}
+
+/// Resolve environment variable or 1Password secret reference
+///
+/// Supports four formats:
+/// 1. `op://vault/item/field` - 1Password secret reference
+/// 2. `${VAR}` - Environment variable (required)
+/// 3. `${VAR:-default}` - Environment variable with fallback default
+/// 4. Plain values - Returned as-is
+///
+/// # Arguments
+/// * `value` - The value to resolve
+///
+/// # Returns
+/// * Plain values are returned as-is
+/// * `op://` references are resolved via 1Password CLI
+/// * `${VAR}` references are resolved from environment
+///
+/// # Example
+/// ```ignore
+/// // 1Password secret
+/// let api_key = resolve_env_var("op://Private/rustbot/api_key")?;
+///
+/// // Environment variable
+/// let api_key = resolve_env_var("${OPENROUTER_API_KEY}")?;
+///
+/// // Environment variable with default
+/// let model = resolve_env_var("${MODEL:-anthropic/claude-sonnet-4}")?;
+///
+/// // Plain value
+/// let name = resolve_env_var("assistant")?; // Returns "assistant"
+/// ```
+///
+/// # Error Cases
 /// - Variable not found: Returns Config error with variable name
+/// - 1Password CLI errors: Returns Config error with helpful message
 pub fn resolve_env_var(value: &str) -> Result<String> {
-    if value.starts_with("${") && value.ends_with("}") {
-        let var_name = &value[2..value.len() - 1];
-        std::env::var(var_name)
-            .map_err(|_| McpError::Config(format!("Environment variable not found: {}", var_name)))
+    // Check for 1Password secret reference first
+    if value.starts_with("op://") {
+        return read_1password_secret(value);
+    }
+
+    // Not an environment variable reference
+    if !value.starts_with("${") || !value.ends_with("}") {
+        return Ok(value.to_string());
+    }
+
+    // Extract variable expression
+    let var_expr = &value[2..value.len() - 1];
+
+    // Check for default value syntax: ${VAR:-default}
+    if let Some(pos) = var_expr.find(":-") {
+        let var_name = &var_expr[..pos];
+        let default_value = &var_expr[pos + 2..];
+
+        // Return env var if set, otherwise use default
+        match std::env::var(var_name) {
+            Ok(val) if !val.is_empty() => Ok(val),
+            _ => Ok(default_value.to_string()),
+        }
     } else {
-        Ok(value.to_string())
+        // No default, variable is required
+        std::env::var(var_expr)
+            .map_err(|_| McpError::Config(format!("Environment variable not found: {}", var_expr)))
     }
 }
 

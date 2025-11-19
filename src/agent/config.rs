@@ -2,6 +2,7 @@ use crate::llm::LlmProvider;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::process::Command;
 
 /// JSON-based agent configuration
 ///
@@ -353,16 +354,135 @@ impl JsonAgentConfig {
     }
 }
 
-/// Resolve environment variable syntax in a string
+/// Read a secret from 1Password using the CLI
 ///
-/// Supported formats:
-/// - `${VAR_NAME}` - Required variable (error if not found)
-/// - `${VAR_NAME:-default_value}` - Optional with default
-/// - Plain strings are returned unchanged
+/// Supports the `op://vault/item/field` reference format used by 1Password CLI.
 ///
-/// # Errors
-/// - Environment variable not found (for required variables)
+/// # Arguments
+/// * `reference` - 1Password secret reference (e.g., "op://Private/API Keys/credential")
+///
+/// # Returns
+/// * `Ok(String)` - The secret value from 1Password
+/// * `Err` - If `op` CLI is not installed, not authenticated, or reference is invalid
+///
+/// # Example
+/// ```ignore
+/// let secret = read_1password_secret("op://Private/rustbot/api_key")?;
+/// ```
+///
+/// # Error Cases
+/// - `op` CLI not installed: Suggests installation via `brew install 1password-cli`
+/// - Not authenticated: Suggests running `op signin`
+/// - Invalid reference format: Must start with `op://`
+/// - Empty secret: 1Password returned empty value
+///
+/// # Requirements
+/// - 1Password CLI must be installed and available in PATH
+/// - User must be signed in: `op signin`
+/// - Secret reference must exist in user's 1Password account
+fn read_1password_secret(reference: &str) -> Result<String> {
+    // Validate reference format
+    if !reference.starts_with("op://") {
+        anyhow::bail!(
+            "Invalid 1Password reference format: '{}'. Must start with 'op://'",
+            reference
+        );
+    }
+
+    // Execute `op read` command
+    let output = Command::new("op")
+        .arg("read")
+        .arg(reference)
+        .output()
+        .with_context(|| {
+            format!(
+                "Failed to execute 1Password CLI. Is it installed?\n\
+                 Install: brew install 1password-cli\n\
+                 Reference: {}",
+                reference
+            )
+        })?;
+
+    // Check if command succeeded
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // Provide helpful error messages based on common failures
+        if stderr.contains("not currently signed in") || stderr.contains("signed out") {
+            anyhow::bail!(
+                "Not signed in to 1Password. Run: op signin\n\
+                 Reference: {}",
+                reference
+            );
+        } else if stderr.contains("isn't an item") || stderr.contains("not found") {
+            anyhow::bail!(
+                "1Password secret not found: {}\n\
+                 Error: {}",
+                reference,
+                stderr.trim()
+            );
+        } else {
+            anyhow::bail!(
+                "Failed to read 1Password secret: {}\n\
+                 Error: {}",
+                reference,
+                stderr.trim()
+            );
+        }
+    }
+
+    // Parse output
+    let secret = String::from_utf8(output.stdout)
+        .with_context(|| format!("1Password returned invalid UTF-8 for: {}", reference))?
+        .trim()
+        .to_string();
+
+    // Ensure secret is not empty
+    if secret.is_empty() {
+        anyhow::bail!(
+            "1Password secret is empty: {}",
+            reference
+        );
+    }
+
+    Ok(secret)
+}
+
+/// Resolve environment variable or 1Password secret reference
+///
+/// Supports three formats:
+/// 1. `op://vault/item/field` - 1Password secret reference
+/// 2. `${VAR}` - Environment variable (required)
+/// 3. `${VAR:-default}` - Environment variable with fallback default
+///
+/// # Arguments
+/// * `value` - The value to resolve
+///
+/// # Returns
+/// * Plain values are returned as-is
+/// * `op://` references are resolved via 1Password CLI
+/// * `${VAR}` references are resolved from environment
+///
+/// # Example
+/// ```ignore
+/// // 1Password secret
+/// let api_key = resolve_env_var("op://Private/rustbot/api_key")?;
+///
+/// // Environment variable
+/// let api_key = resolve_env_var("${OPENROUTER_API_KEY}")?;
+///
+/// // Environment variable with default
+/// let model = resolve_env_var("${MODEL:-anthropic/claude-sonnet-4}")?;
+///
+/// // Plain value
+/// let name = resolve_env_var("assistant")?; // Returns "assistant"
+/// ```
 fn resolve_env_var(value: &str) -> Result<String> {
+    // Check for 1Password secret reference first
+    if value.starts_with("op://") {
+        return read_1password_secret(value);
+    }
+
     // Not an environment variable reference
     if !value.starts_with("${") || !value.ends_with('}') {
         return Ok(value.to_string());
