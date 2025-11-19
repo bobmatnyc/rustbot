@@ -379,6 +379,16 @@ impl crate::RustbotApp {
             if agents_button.clicked() {
                 self.settings_view = SettingsView::Agents;
             }
+
+            ui.add_space(10.0);
+
+            let preferences_button = ui.add(egui::SelectableLabel::new(
+                self.settings_view == SettingsView::Preferences,
+                "Preferences",
+            ));
+            if preferences_button.clicked() {
+                self.settings_view = SettingsView::Preferences;
+            }
         });
         ui.separator();
 
@@ -386,6 +396,7 @@ impl crate::RustbotApp {
         match self.settings_view {
             SettingsView::SystemPrompts => self.render_system_prompts(ui),
             SettingsView::Agents => self.render_agents_view(ui),
+            SettingsView::Preferences => self.render_preferences_view(ui),
         }
     }
 
@@ -1381,6 +1392,97 @@ impl crate::RustbotApp {
                 }
 
                 ui.add_space(20.0); // Bottom padding
+            });
+    }
+
+    /// Render the preferences view for UI customization
+    ///
+    /// Allows configuration of:
+    /// - Theme (light/dark mode)
+    /// - Other UI preferences (future: font size, etc.)
+    ///
+    /// Changes are saved immediately to user profile
+    ///
+    /// # Arguments
+    /// * `ui` - The egui UI context for rendering
+    pub fn render_preferences_view(&mut self, ui: &mut egui::Ui) {
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.add_space(20.0);
+                ui.heading("Preferences");
+                ui.add_space(10.0);
+
+                ui.label("Customize the application appearance and behavior:");
+                ui.add_space(15.0);
+
+                // Theme selection
+                ui.group(|ui| {
+                    ui.label(egui::RichText::new("Theme").strong().size(16.0));
+                    ui.add_space(5.0);
+                    ui.label("Choose between light and dark mode:");
+                    ui.add_space(10.0);
+
+                    ui.horizontal(|ui| {
+                        let theme_changed = if ui
+                            .selectable_label(!self.dark_mode, format!("{} Light", icons::SUN))
+                            .clicked()
+                        {
+                            self.dark_mode = false;
+                            true
+                        } else if ui
+                            .selectable_label(self.dark_mode, format!("{} Dark", icons::MOON))
+                            .clicked()
+                        {
+                            self.dark_mode = true;
+                            true
+                        } else {
+                            false
+                        };
+
+                        // Save theme preference to user profile
+                        if theme_changed {
+                            let storage = Arc::clone(&self.deps.storage);
+                            let theme = if self.dark_mode { "dark" } else { "light" }.to_string();
+                            let runtime = self
+                                .deps
+                                .runtime
+                                .as_ref()
+                                .expect("Runtime is required for RustbotApp");
+
+                            runtime.spawn(async move {
+                                // Load current profile
+                                if let Ok(mut profile) = storage.load_user_profile().await {
+                                    // Update theme
+                                    profile.theme = theme.clone();
+
+                                    // Save updated profile
+                                    if let Err(e) = storage.save_user_profile(&profile).await {
+                                        tracing::error!("Failed to save theme preference: {}", e);
+                                    } else {
+                                        tracing::info!("Theme preference saved: {}", theme);
+                                    }
+                                }
+                            });
+                        }
+                    });
+
+                    ui.add_space(5.0);
+                    ui.label(
+                        egui::RichText::new(if self.dark_mode {
+                            "Currently using Dark theme"
+                        } else {
+                            "Currently using Light theme"
+                        })
+                        .size(12.0)
+                        .color(egui::Color32::from_rgb(100, 100, 100)),
+                    );
+                });
+
+                ui.add_space(20.0);
+
+                // Future preferences can be added here
+                // Example: Font size, animations, etc.
             });
     }
 }

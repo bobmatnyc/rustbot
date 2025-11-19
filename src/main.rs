@@ -283,6 +283,7 @@ struct RustbotApp {
     settings_view: SettingsView,
     system_prompts: SystemPrompts,
     current_activity: Option<String>, // Track current agent activity
+    dark_mode: bool,                  // Theme toggle state
 
     // Event visualization
     event_rx: broadcast::Receiver<Event>,
@@ -430,9 +431,12 @@ impl RustbotApp {
         let mermaid_renderer = Arc::new(Mutex::new(mermaid::MermaidRenderer::new()));
 
         // Check if this is first run (no profile exists and/or no API key in env)
-        let profile_exists = runtime.block_on(async {
+        // Also load theme preference
+        let (profile_exists, dark_mode) = runtime.block_on(async {
             let profile = deps.storage.load_user_profile().await.unwrap_or_default();
-            !profile.name.is_empty() || !profile.email.is_empty()
+            let exists = !profile.name.is_empty() || !profile.email.is_empty();
+            let dark = profile.theme == "dark";
+            (exists, dark)
         });
 
         let setup_wizard_active = !profile_exists || api_key.is_empty();
@@ -453,6 +457,7 @@ impl RustbotApp {
             settings_view: SettingsView::Agents, // Start with Agents view to show loaded agents
             system_prompts,
             current_activity: None,
+            dark_mode,
             event_rx,
             agent_configs: agent_configs.clone(),
             selected_agent_index: None,
@@ -478,6 +483,117 @@ impl RustbotApp {
             setup_email: String::new(),
             setup_api_key: api_key.clone(),
         }
+    }
+
+    /// Apply light theme with professional color scheme
+    ///
+    /// Design: Clean, bright interface optimized for extended use
+    /// - Soft backgrounds to reduce eye strain
+    /// - High contrast for readability
+    /// - Consistent spacing and Roboto fonts
+    fn apply_light_theme(&self, ctx: &egui::Context) {
+        let mut style = (*ctx.style()).clone();
+
+        // Font sizes (same for both themes)
+        style.text_styles = [
+            (
+                egui::TextStyle::Heading,
+                egui::FontId::new(24.0, egui::FontFamily::Proportional),
+            ),
+            (
+                egui::TextStyle::Body,
+                egui::FontId::new(16.0, egui::FontFamily::Proportional),
+            ),
+            (
+                egui::TextStyle::Button,
+                egui::FontId::new(16.0, egui::FontFamily::Proportional),
+            ),
+            (
+                egui::TextStyle::Small,
+                egui::FontId::new(14.0, egui::FontFamily::Proportional),
+            ),
+            (
+                egui::TextStyle::Monospace,
+                egui::FontId::new(14.0, egui::FontFamily::Proportional),
+            ),
+        ]
+        .into();
+
+        // Light color scheme
+        let mut visuals = egui::Visuals::light();
+        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(245, 245, 247);
+        visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(240, 240, 242);
+        visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(230, 230, 235);
+        visuals.widgets.active.bg_fill = egui::Color32::from_rgb(60, 120, 220);
+        visuals.selection.bg_fill = egui::Color32::from_rgba_premultiplied(60, 120, 220, 80);
+        visuals.extreme_bg_color = egui::Color32::from_rgb(250, 250, 252);
+        visuals.panel_fill = egui::Color32::from_rgb(248, 248, 250);
+        visuals.window_fill = egui::Color32::from_rgb(255, 255, 255);
+
+        style.visuals = visuals;
+        ctx.set_style(style);
+    }
+
+    /// Apply dark theme with professional color scheme
+    ///
+    /// Design: Comfortable dark interface for low-light environments
+    /// - Deep grays instead of pure black to reduce eye strain
+    /// - Carefully chosen accent colors for visibility
+    /// - Same spacing and fonts as light theme for consistency
+    fn apply_dark_theme(&self, ctx: &egui::Context) {
+        let mut style = (*ctx.style()).clone();
+
+        // Font sizes (same for both themes)
+        style.text_styles = [
+            (
+                egui::TextStyle::Heading,
+                egui::FontId::new(24.0, egui::FontFamily::Proportional),
+            ),
+            (
+                egui::TextStyle::Body,
+                egui::FontId::new(16.0, egui::FontFamily::Proportional),
+            ),
+            (
+                egui::TextStyle::Button,
+                egui::FontId::new(16.0, egui::FontFamily::Proportional),
+            ),
+            (
+                egui::TextStyle::Small,
+                egui::FontId::new(14.0, egui::FontFamily::Proportional),
+            ),
+            (
+                egui::TextStyle::Monospace,
+                egui::FontId::new(14.0, egui::FontFamily::Proportional),
+            ),
+        ]
+        .into();
+
+        // Dark color scheme
+        let mut visuals = egui::Visuals::dark();
+
+        // Text colors
+        visuals.override_text_color = Some(egui::Color32::from_rgb(230, 230, 230));
+
+        // Widget backgrounds
+        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(40, 40, 45);
+        visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(45, 45, 50);
+        visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(55, 55, 65);
+        visuals.widgets.active.bg_fill = egui::Color32::from_rgb(100, 160, 255);
+
+        // Selection color
+        visuals.selection.bg_fill = egui::Color32::from_rgba_premultiplied(100, 160, 255, 80);
+
+        // Panel and window backgrounds
+        visuals.panel_fill = egui::Color32::from_rgb(30, 30, 35);
+        visuals.window_fill = egui::Color32::from_rgb(25, 25, 28);
+        visuals.extreme_bg_color = egui::Color32::from_rgb(20, 20, 23);
+
+        // Border and separator colors
+        visuals.widgets.noninteractive.bg_stroke.color = egui::Color32::from_rgb(60, 60, 65);
+        visuals.window_stroke.color = egui::Color32::from_rgb(50, 50, 55);
+
+        style.visuals = visuals;
+        ctx.set_style(style);
     }
 
     fn get_instructions_dir() -> Result<PathBuf> {
@@ -1152,6 +1268,7 @@ This information is provided automatically to give you context about the current
             email: self.setup_email.clone(),
             timezone: None,
             location: None,
+            theme: "light".to_string(), // Default to light theme
         };
 
         let storage = Arc::clone(&self.deps.storage);
@@ -1470,45 +1587,12 @@ impl eframe::App for RustbotApp {
             }
         }
 
-        // Set custom theme with larger fonts
-        let mut style = (*ctx.style()).clone();
-        style.text_styles = [
-            (
-                egui::TextStyle::Heading,
-                egui::FontId::new(24.0, egui::FontFamily::Proportional),
-            ),
-            (
-                egui::TextStyle::Body,
-                egui::FontId::new(16.0, egui::FontFamily::Proportional),
-            ),
-            (
-                egui::TextStyle::Button,
-                egui::FontId::new(16.0, egui::FontFamily::Proportional),
-            ),
-            (
-                egui::TextStyle::Small,
-                egui::FontId::new(14.0, egui::FontFamily::Proportional),
-            ),
-            (
-                egui::TextStyle::Monospace,
-                egui::FontId::new(14.0, egui::FontFamily::Proportional),
-            ),
-        ]
-        .into();
-
-        // Custom light color scheme
-        let mut visuals = egui::Visuals::light();
-        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(245, 245, 247);
-        visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(240, 240, 242);
-        visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(230, 230, 235);
-        visuals.widgets.active.bg_fill = egui::Color32::from_rgb(60, 120, 220);
-        visuals.selection.bg_fill = egui::Color32::from_rgba_premultiplied(60, 120, 220, 80);
-        visuals.extreme_bg_color = egui::Color32::from_rgb(250, 250, 252);
-        visuals.panel_fill = egui::Color32::from_rgb(248, 248, 250);
-        visuals.window_fill = egui::Color32::from_rgb(255, 255, 255);
-
-        style.visuals = visuals;
-        ctx.set_style(style);
+        // Apply theme based on user preference
+        if self.dark_mode {
+            self.apply_dark_theme(ctx);
+        } else {
+            self.apply_light_theme(ctx);
+        }
 
         // Sidebar panel
         if self.sidebar_open {

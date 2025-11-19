@@ -276,6 +276,14 @@ pub struct UserProfile {
 
     /// User's location (e.g., "San Francisco, CA")
     pub location: Option<String>,
+
+    /// UI theme preference ("light" or "dark")
+    #[serde(default = "default_theme")]
+    pub theme: String,
+}
+
+fn default_theme() -> String {
+    "light".to_string()
 }
 
 impl Default for UserProfile {
@@ -285,6 +293,7 @@ impl Default for UserProfile {
             email: String::new(),
             timezone: None,
             location: None,
+            theme: default_theme(),
         }
     }
 }

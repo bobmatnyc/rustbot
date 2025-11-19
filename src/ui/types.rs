@@ -25,6 +25,7 @@ pub enum AppView {
 pub enum SettingsView {
     SystemPrompts,
     Agents,
+    Preferences,
 }
 
 /// Extensions sub-view (Marketplace, Installed)
